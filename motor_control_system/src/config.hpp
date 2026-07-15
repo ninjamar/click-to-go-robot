@@ -6,4 +6,3 @@ const unsigned long BAUD_RATE = 57600;
 // Motor pins (L298N)
 const int MOTOR_IN1_PIN = 5;
 const int MOTOR_IN2_PIN = 6;
-const int MOTOR_EN_PIN = 9;

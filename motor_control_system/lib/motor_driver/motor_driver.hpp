@@ -6,7 +6,11 @@ public:
     MotorDriver(uint8_t pinEnable, uint8_t pinIN1, uint8_t pinIN2)
         : _motor(pinEnable, pinIN1, pinIN2)
     {
-    } // initialzer liist
+    } // initialzer list
+    MotorDriver(uint8_t pinIN1, uint8_t pinIN2)
+        : _motor(pinIN1, pinIN2)
+    {
+    }
 
     void move(uint8_t duration)
     {

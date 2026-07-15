@@ -3,7 +3,8 @@
 #include "serial_protocol.hpp"
 #include <Arduino.h>
 
-MotorDriver motorDriver(MOTOR_EN_PIN, MOTOR_IN1_PIN, MOTOR_IN2_PIN);
+// MotorDriver motorDriver(MOTOR_EN_PIN, MOTOR_IN1_PIN, MOTOR_IN2_PIN);
+MotorDriver motorDriver(MOTOR_IN1_PIN, MOTOR_IN2_PIN); // no en pin
 
 void setup()
 {

@@ -1,5 +1,7 @@
 
-format: 
+format:
+    #!/usr/bin/env zsh
+
     ruff format . 
     isort .
-    clang-format -i .**/*.{cpp,hpp}
+    clang-format -i ./**/*.{cpp,hpp}

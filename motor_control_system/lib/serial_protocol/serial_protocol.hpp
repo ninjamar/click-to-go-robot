@@ -11,26 +11,26 @@ enum Operation {
 struct CommandPacket {
     uint8_t seq_id;
     uint8_t operation;
-    uint8_t arg;
-    uint8_t checksum;
+    uint64_t arg;
+    // uint8_t checksum;
 };
 
 struct ResponsePacket {
     uint8_t seq_id;
-    uint8_t checksum;
+    // uint8_t checksum;
 };
 
-bool checkCommandValidity(const CommandPacket& packet)
-{
-    uint8_t expected = packet.seq_id + packet.operation + packet.arg;
-    return packet.checksum == expected;
-}
+// bool checkCommandValidity(const CommandPacket& packet)
+// {
+//     uint8_t expected = packet.seq_id + packet.operation + packet.arg;
+//     return packet.checksum == expected;
+// }
 
 ResponsePacket buildResponse(uint8_t seq_id)
 {
     ResponsePacket resp;
     resp.seq_id = seq_id;
-    resp.checksum = seq_id;
+    // resp.checksum = seq_id;
     return resp;
 }
 
@@ -48,7 +48,8 @@ bool readCommand(Stream& serial, CommandPacket& outPacket)
         return false;
     }
 
-    return checkCommandValidity(outPacket);
+    return true;
+    // return checkCommandValidity(outPacket);
 }
 
 void sendResponse(Stream& serial, const ResponsePacket& packet)

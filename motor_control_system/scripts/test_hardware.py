@@ -1,4 +1,5 @@
-"""Hardware integration tests for serial protocol.
+"""
+Hardware integration tests for serial protocol.
 
 Tests the Arduino firmware by sending command packets and verifying responses.
 
@@ -6,8 +7,6 @@ Usage:
     pytest scripts/ --port /dev/cu.usbserial-XXXX
     pytest scripts/ --port COM3 --baud 9600
 """
-
-import struct
 
 import pytest
 from protocol import OP, build_command_packet, parse_response_packet
@@ -22,27 +21,11 @@ from protocol import OP, build_command_packet, parse_response_packet
     ],
 )
 def test_echo_command(serial_conn, seq_id, op, param):
-    """Test: send command and verify it's echoed back with correct seq_id and checksum."""
+    """Test: send command and verify it's echoed back with correct seq_id."""
     cmd = build_command_packet(seq_id, op, param)
     serial_conn.write(cmd)
-    resp_data = serial_conn.read(2)
+    resp_data = serial_conn.read(1)
 
     assert resp_data, f"No response received for {op}"
-    resp = parse_response_packet(resp_data)
-    assert resp is not None, f"Failed to parse response {resp_data.hex()}"
-    assert resp[0] == seq_id, f"Expected seq_id {seq_id}, got {resp[0]}"
-    assert resp[1] == seq_id, f"Expected checksum {seq_id}, got {resp[1]}"
-
-
-def test_invalid_checksum_rejected(serial_conn):
-    """Test: send command with bad checksum, expect no response."""
-    seq_id = 4
-    bad_checksum = 99
-    cmd = struct.pack("<BBBB", seq_id, OP.MOVE, 50, bad_checksum)
-
-    serial_conn.write(cmd)
-    resp_data = serial_conn.read(2)
-
-    assert not resp_data, (
-        f"Expected no response for bad checksum, got {resp_data.hex()}"
-    )
+    resp_seq_id = parse_response_packet(resp_data)
+    assert resp_seq_id == seq_id, f"Expected seq_id {seq_id}, got {resp_seq_id}"

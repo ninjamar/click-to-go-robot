@@ -39,7 +39,7 @@ def serial_conn(request):
     except serial.SerialException as e:
         pytest.fail(f"Failed to open serial port {port_name}: {e}")
 
-    # Wait for board to finish reset (opening serial triggers DTR reset on Nano)
+    # Wait for board to finish reset(opening serial triggers DTR reset on Nano)
     time.sleep(2)
 
     # Clear any stale data in the buffer

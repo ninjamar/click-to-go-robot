@@ -5,6 +5,7 @@ import struct
 
 class OP:
     """Operation codes matching Arduino firmware."""
+
     MOVE = 1
     ROTATE = 2
     STOP = 3
@@ -24,7 +25,7 @@ def build_command_packet(seq_id, operation, arg):
         Checksum is the additive sum of the first 3 bytes, truncated to uint8_t.
     """
     checksum = (seq_id + operation + arg) & 0xFF
-    return struct.pack('<BBBB', seq_id, operation, arg, checksum)
+    return struct.pack("<BBBB", seq_id, operation, arg, checksum)
 
 
 def parse_response_packet(data):
@@ -39,5 +40,5 @@ def parse_response_packet(data):
     """
     if len(data) < 2:
         return None
-    seq_id, checksum = struct.unpack('<BB', data[:2])
+    seq_id, checksum = struct.unpack("<BB", data[:2])
     return (seq_id, checksum)

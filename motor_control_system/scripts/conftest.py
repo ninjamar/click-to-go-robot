@@ -1,28 +1,29 @@
 """pytest configuration and fixtures for hardware integration tests."""
 
+import time
+
 import pytest
 import serial
-import time
 
 
 def pytest_addoption(parser):
     """Add --port and --baud options to pytest CLI."""
     parser.addoption(
-        '--port',
-        action='store',
+        "--port",
+        action="store",
         required=True,
-        help='Serial port (e.g. /dev/cu.usbserial-XXXX or COM3)',
+        help="Serial port (e.g. /dev/cu.usbserial-XXXX or COM3)",
     )
     parser.addoption(
-        '--baud',
-        action='store',
+        "--baud",
+        action="store",
         type=int,
         default=57600,
-        help='Baud rate (default 57600)',
+        help="Baud rate (default 57600)",
     )
 
 
-@pytest.fixture(scope='session')
+@pytest.fixture(scope="session")
 def serial_conn(request):
     """
     Session-scoped fixture that opens the serial port once for all tests.
@@ -30,8 +31,8 @@ def serial_conn(request):
     Waits for board reset (DTR) and clears the input buffer before yielding.
     Closes the port after all tests complete.
     """
-    port_name = request.config.getoption('--port')
-    baud = request.config.getoption('--baud')
+    port_name = request.config.getoption("--port")
+    baud = request.config.getoption("--baud")
 
     try:
         conn = serial.Serial(port_name, baud, timeout=2)

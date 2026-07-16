@@ -1,4 +1,8 @@
 #pragma once
+#include <Arduino.h>
+
+// Using uint8_t since microcontroller has limited space
+const uint8_t QUEUE_SIZE = 4;
 
 // Serial communication
 const unsigned long BAUD_RATE = 57600;

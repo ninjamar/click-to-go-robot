@@ -12,7 +12,7 @@ import argparse
 import time
 
 import serial
-from protocol import OP, build_command_packet, parse_response_packet
+from protocol import OP, Status, build_command_packet, parse_response_packet
 
 
 def parse_operation(op_str):
@@ -52,27 +52,22 @@ def main():
 
     operation = parse_operation(args.operation)
 
-    # Open serial connection
     conn = serial.Serial(args.port, args.baud, timeout=2)
-
-    # Wait for board reset(opening serial triggers DTR reset on some boards)
     time.sleep(2)
-
-    # Clear any stale data
     conn.reset_input_buffer()
 
-    # Build and send command
     cmd = build_command_packet(args.seq_id, operation, args.arg)
-    print(f"Sending: {cmd.hex()}")
     conn.write(cmd)
 
-    # Read response
-    resp_data = conn.read(1)
-    print(f"Received: {resp_data.hex()}")
+    resp_data = conn.read(2)
+    resp_seq_id, resp_status = parse_response_packet(resp_data)
+    print(f"intake: seq_id={resp_seq_id}, status={resp_status.name}")
 
-    # Parse response
-    resp_seq_id = parse_response_packet(resp_data)
-    print(f"Response: seq_id={resp_seq_id}")
+    if operation != OP.STOP and resp_status == Status.OK:
+        conn.timeout = (args.arg / 1000.0) + 2
+        resp_data = conn.read(2)
+        resp_seq_id, resp_status = parse_response_packet(resp_data)
+        print(f"completion: seq_id={resp_seq_id}, status={resp_status.name}")
 
     conn.close()
 

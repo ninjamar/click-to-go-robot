@@ -14,8 +14,8 @@ class Status(IntEnum):
     REJECTED_FULL = 2
 
 
-def build_command_packet(seq_id, operation, arg):
-    return struct.pack("<BBQ", seq_id, operation, arg)
+def build_command_packet(seq_id, operation, arg, direction=0):
+    return struct.pack("<BBQb", seq_id, operation, arg, direction)
 
 
 def parse_response_packet(data):

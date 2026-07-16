@@ -3,9 +3,9 @@
 Send a single command packet to the board via serial.
 
 Usage:
-    python send_command.py move 50 --port /dev/cu.usbserial-XXXX
-    python send_command.py 1 50 --port /dev/cu.usbserial-XXXX -- baud 9600
-    python send_command.py rotate 90 --port /dev/cu.usbserial-XXXX --seq-id 42
+    python send_command.py --operation move 50 --port /dev/cu.usbserial-XXXX
+    python send_command.py --op rotate 90 --port /dev/cu.usbserial-XXXX --seq-id 42
+    python send_command.py --operation stop 0 --port /dev/cu.usbserial-XXXX
 """
 
 import argparse
@@ -15,20 +15,18 @@ import serial
 from protocol import OP, Status, build_command_packet, parse_response_packet
 
 
-def parse_operation(op_str):
-    op_map = {"move": OP.MOVE, "rotate": OP.ROTATE, "stop": OP.STOP}
-    return op_map[op_str.lower()]
-
-
 def main():
     parser = argparse.ArgumentParser(description="Send a command packet to the board.")
     parser.add_argument(
-        "operation",
+        "-op",
+        "--operation",
+        required=True,
         help="Operation: 'move', 'rotate', 'stop'",
     )
     parser.add_argument(
         "arg",
         type=int,
+        help="Duration (ms) for move/rotate, or 0 for stop",
     )
     parser.add_argument(
         "--port",
@@ -47,16 +45,23 @@ def main():
         default=1,
         help="Sequence ID (default: 1)",
     )
+    parser.add_argument(
+        "--direction",
+        type=int,
+        choices=[-1, 0, 1],
+        default=1,
+        help="Direction: -1 (backward), 0 (stop), 1 (forward) (default: 1)",
+    )
 
     args = parser.parse_args()
 
-    operation = parse_operation(args.operation)
+    operation = getattr(OP, args.operation.upper())
 
     conn = serial.Serial(args.port, args.baud, timeout=2)
     time.sleep(2)
     conn.reset_input_buffer()
 
-    cmd = build_command_packet(args.seq_id, operation, args.arg)
+    cmd = build_command_packet(args.seq_id, operation, args.arg, args.direction)
     conn.write(cmd)
 
     resp_data = conn.read(2)

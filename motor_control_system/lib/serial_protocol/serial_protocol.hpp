@@ -18,6 +18,7 @@ struct CommandPacket {
     uint8_t seq_id;
     uint8_t operation; // Operation
     uint64_t arg;
+    int8_t direction; // -1, 0, or 1
     // uint8_t checksum;
 } __attribute__((packed)); // Pack it tightly to match Python.
 

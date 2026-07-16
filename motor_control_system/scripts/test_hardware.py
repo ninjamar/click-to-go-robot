@@ -13,15 +13,15 @@ from protocol import OP, Status, build_command_packet, parse_response_packet
 
 
 @pytest.mark.parametrize(
-    "seq_id,op,param",
+    "seq_id,op,param,direction",
     [
-        (1, OP.MOVE, 50),
-        (2, OP.ROTATE, 90),
+        (1, OP.MOVE, 50, 1),
+        (2, OP.ROTATE, 90, 0),
     ],
 )
-def test_move_rotate_command(serial_conn, seq_id, op, param):
+def test_move_rotate_command(serial_conn, seq_id, op, param, direction):
     """Test: send MOVE/ROTATE command and verify it's queued then completed."""
-    cmd = build_command_packet(seq_id, op, param)
+    cmd = build_command_packet(seq_id, op, param, direction)
     serial_conn.write(cmd)
 
     resp_data = serial_conn.read(2)
@@ -37,7 +37,7 @@ def test_move_rotate_command(serial_conn, seq_id, op, param):
 
 def test_stop_command(serial_conn):
     """Test: send STOP command and verify it completes immediately."""
-    cmd = build_command_packet(3, OP.STOP, 0)
+    cmd = build_command_packet(3, OP.STOP, 0, 0)
     serial_conn.write(cmd)
 
     resp_data = serial_conn.read(2)
@@ -49,7 +49,7 @@ def test_stop_command(serial_conn):
 def test_queue_full_rejection(serial_conn):
     """Test: send 5 commands rapidly and verify the 5th is rejected due to queue full."""
     for seq_id in [10, 11, 12, 13, 14]:
-        cmd = build_command_packet(seq_id, OP.MOVE, 10000)
+        cmd = build_command_packet(seq_id, OP.MOVE, 10000, 0)
         serial_conn.write(cmd)
 
     responses = []

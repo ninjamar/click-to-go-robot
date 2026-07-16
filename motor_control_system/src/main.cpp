@@ -3,7 +3,7 @@
 #include "serial_protocol.hpp"
 #include <Arduino.h>
 
-MotorDriver motorDriver(MOTOR_IN1_PIN, MOTOR_IN2_PIN); // no en pin
+MotorDriver motorDriver(MOTOR_A_IN1_PIN, MOTOR_A_IN2_PIN, MOTOR_B_IN1_PIN, MOTOR_B_IN2_PIN);
 
 // Command queue state
 CommandPacket queue[QUEUE_SIZE];
@@ -17,6 +17,7 @@ uint8_t queueCount = 0; // number of items in queue
 bool isActive = false;
 CommandPacket activeCommand;
 unsigned long activeStartTime = 0;
+bool activeStarted = false;
 
 void setup()
 {
@@ -56,20 +57,29 @@ void loop()
         queueCount--;
         activeStartTime = millis();
         isActive = true;
+        activeStarted = false;
     }
 
     // Poll: if a command is active, drive it toward completion
     if (isActive) {
-        switch (activeCommand.operation) {
-        case OP_MOVE:
-            motorDriver.move(activeCommand.arg);
-        case OP_ROTATE:
-            motorDriver.rotate(activeCommand.arg);
+        if (!activeStarted) {
+            switch (activeCommand.operation) {
+            case OP_MOVE:
+                motorDriver.move(activeCommand.arg, activeCommand.direction);
+                break;
+            case OP_ROTATE:
+                motorDriver.rotate(activeCommand.arg, activeCommand.direction);
+                break;
+            }
+            activeStarted = true;
         }
 
         // Check duration
         if (millis() - activeStartTime >= activeCommand.arg) {
-            motorDriver.getMotor().reset(); // Clean up library state
+            // Internally, the L298N library only stops the motor once its methods are called.
+            // The easiest way to fix this is to use .stop
+            motorDriver.stop();
+            motorDriver.getMotors().reset(); // Clean up library state
             sendStatus(activeCommand, STATUS_SUCCESS);
             isActive = false;
         }

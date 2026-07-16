@@ -16,6 +16,7 @@ void loop()
     CommandPacket cmd;
     if (readCommand(Serial, cmd)) {
         switch (cmd.operation) {
+
         case OP_MOVE:
             motorDriver.move(cmd.arg);
             break;

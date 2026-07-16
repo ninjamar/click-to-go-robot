@@ -13,12 +13,12 @@ struct CommandPacket {
     uint8_t operation;
     uint64_t arg;
     // uint8_t checksum;
-};
+} __attribute__((packed)); // Pack it tightly to match Python.
 
 struct ResponsePacket {
     uint8_t seq_id;
     // uint8_t checksum;
-};
+} __attribute__((packed));
 
 // bool checkCommandValidity(const CommandPacket& packet)
 // {

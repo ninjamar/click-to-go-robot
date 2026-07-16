@@ -12,12 +12,12 @@ public:
     {
     }
 
-    void move(uint8_t duration)
+    void move(uint64_t duration)
     {
         _motor.forwardFor(duration);
     }
 
-    void rotate(uint8_t arg)
+    void rotate(uint64_t arg)
     {
     }
 

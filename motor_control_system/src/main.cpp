@@ -1,9 +1,12 @@
 #include "config.hpp"
 #include "motor_driver.hpp"
+#include "odometer_driver.hpp"
 #include "serial_protocol.hpp"
 #include <Arduino.h>
 
 MotorDriver motorDriver(MOTOR_A_IN1_PIN, MOTOR_A_IN2_PIN, MOTOR_B_IN1_PIN, MOTOR_B_IN2_PIN);
+OdometerDriver odometerDriver(ENCODER_A1_PIN, ENCODER_B1_PIN, ENCODER_A2_PIN, ENCODER_B2_PIN);
+SerialProtocol serialProtocol(Serial);
 
 // Command queue state
 CommandPacket queue[QUEUE_SIZE];
@@ -19,40 +22,75 @@ CommandPacket activeCommand;
 unsigned long activeStartTime = 0;
 bool activeStarted = false;
 
+// Deferred OP_POLL_W request (single slot — a second poll while one is
+// already pending simply overwrites it; last request's seq_id wins).
+bool pollPending = false;
+CommandPacket pollRequest;
+
 void setup()
 {
     Serial.begin(BAUD_RATE);
+    odometerDriver.begin();
 }
 
 void loop()
 {
-    // Intake, read command, check STOP, add to queue
+    // Intake
     CommandPacket packet;
-    if (readCommand(Serial, packet)) {
-        if (packet.operation == OP_STOP) {
-            // STOP bypasses queue: execute immediately and respond
+    if (serialProtocol.readCommand(packet)) {
+        switch (packet.operation) {
+        // Handle non-queue operations
+        case OP_STOP:
             motorDriver.stop();
             isActive = false;
-            sendStatus(packet, STATUS_SUCCESS);
-        } else {
-            // Add items to queue
-            uint8_t totalPending = queueCount + (isActive ? 1 : 0); // 4 = queue + active
+            serialProtocol.sendStatus(packet, STATUS_SUCCESS);
+            break;
+        case OP_POLL_W:
+            if (!isActive) {
+                float w1;
+                float w2;
+                odometerDriver.poll(w1, w2);
+                serialProtocol.sendResponse(packet, STATUS_SUCCESS, w1, w2);
+            } else {
+                pollPending = true;
+                pollRequest = packet;
+            }
+            break;
+        default:
+            // Queued operations: add them to the queue
+            uint8_t totalPending = queueCount + (isActive ? 1 : 0);
             if (totalPending < QUEUE_SIZE) {
                 uint8_t tail = (queueHead + queueCount) % QUEUE_SIZE;
                 queue[tail] = packet;
                 queueCount++;
-                sendStatus(packet, STATUS_OK);
+                serialProtocol.sendStatus(packet, STATUS_OK);
             } else {
-                // Queue full: reject
-                sendStatus(packet, STATUS_REJECTED_FULL);
+                serialProtocol.sendStatus(packet, STATUS_REJECTED_FULL);
             }
+            break;
         }
     }
 
-    // Dispatch: if nothing is active and queue is non-empty, pop front and start job
+    // Check if the current command has finished; if it has, send response back.
+    if (isActive && millis() - activeStartTime >= activeCommand.arg) {
+        motorDriver.stop();
+        motorDriver.getMotors().reset();
+        serialProtocol.sendStatus(activeCommand, STATUS_SUCCESS);
+        isActive = false;
+    }
+
+    // Poll (before the next queue command dispatches, so a poll is fulfiled before)
+    if (pollPending) {
+        float w1;
+        float w2;
+        odometerDriver.poll(w1, w2);
+        serialProtocol.sendResponse(pollRequest, STATUS_SUCCESS, w1, w2);
+        pollPending = false;
+    }
+
+    // Dispatch: if nothing is active and queue has items, pop front
     if (!isActive && queueCount > 0) {
         activeCommand = queue[queueHead];
-        // move queue head to the right by one and wrap around
         queueHead = (queueHead + 1) % QUEUE_SIZE;
         queueCount--;
         activeStartTime = millis();
@@ -60,28 +98,16 @@ void loop()
         activeStarted = false;
     }
 
-    // Poll: if a command is active, drive it toward completion
-    if (isActive) {
-        if (!activeStarted) {
-            switch (activeCommand.operation) {
-            case OP_MOVE:
-                motorDriver.move(activeCommand.arg, activeCommand.direction);
-                break;
-            case OP_ROTATE:
-                motorDriver.rotate(activeCommand.arg, activeCommand.direction);
-                break;
-            }
-            activeStarted = true;
+    // Start the active command
+    if (isActive && !activeStarted) {
+        switch (activeCommand.operation) {
+        case OP_QUEUE_MOVE:
+            motorDriver.move(activeCommand.arg, activeCommand.direction);
+            break;
+        case OP_QUEUE_ROTATE:
+            motorDriver.rotate(activeCommand.arg, activeCommand.direction);
+            break;
         }
-
-        // Check duration
-        if (millis() - activeStartTime >= activeCommand.arg) {
-            // Internally, the L298N library only stops the motor once its methods are called.
-            // The easiest way to fix this is to use .stop
-            motorDriver.stop();
-            motorDriver.getMotors().reset(); // Clean up library state
-            sendStatus(activeCommand, STATUS_SUCCESS);
-            isActive = false;
-        }
+        activeStarted = true;
     }
 }

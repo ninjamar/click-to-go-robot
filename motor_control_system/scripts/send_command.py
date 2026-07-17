@@ -12,7 +12,8 @@ import argparse
 import time
 
 import serial
-from protocol import OP, Status, build_command_packet, parse_response_packet
+from protocol import (OP, RESPONSE_SIZE, Status, build_command_packet,
+                      parse_response_packet)
 
 
 def main():
@@ -21,7 +22,7 @@ def main():
         "-op",
         "--operation",
         required=True,
-        help="Operation: 'move', 'rotate', 'stop'",
+        help="Operation: 'move', 'rotate', 'stop', 'poll_w'",
     )
     parser.add_argument(
         "arg",
@@ -55,7 +56,13 @@ def main():
 
     args = parser.parse_args()
 
-    operation = getattr(OP, args.operation.upper())
+    OPERATION_MAP = {
+        "move": OP.QUEUE_MOVE,
+        "rotate": OP.QUEUE_ROTATE,
+        "stop": OP.STOP,
+        "poll_w": OP.POLL_W,
+    }
+    operation = OPERATION_MAP[args.operation]
 
     conn = serial.Serial(args.port, args.baud, timeout=2)
     time.sleep(2)
@@ -64,14 +71,16 @@ def main():
     cmd = build_command_packet(args.seq_id, operation, args.arg, args.direction)
     conn.write(cmd)
 
-    resp_data = conn.read(2)
-    resp_seq_id, resp_status = parse_response_packet(resp_data)
+    resp_data = conn.read(RESPONSE_SIZE)
+    resp_seq_id, resp_status, w1, w2 = parse_response_packet(resp_data)
     print(f"intake: seq_id={resp_seq_id}, status={resp_status.name}")
+    if operation == OP.POLL_W:
+        print(f"  w1={w1:.4f} rad/s, w2={w2:.4f} rad/s")
 
-    if operation != OP.STOP and resp_status == Status.OK:
+    if operation not in (OP.STOP, OP.POLL_W) and resp_status == Status.OK:
         conn.timeout = (args.arg / 1000.0) + 2
-        resp_data = conn.read(2)
-        resp_seq_id, resp_status = parse_response_packet(resp_data)
+        resp_data = conn.read(RESPONSE_SIZE)
+        resp_seq_id, resp_status, w1, w2 = parse_response_packet(resp_data)
         print(f"completion: seq_id={resp_seq_id}, status={resp_status.name}")
 
     conn.close()

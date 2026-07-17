@@ -9,14 +9,15 @@ Usage:
 """
 
 import pytest
-from protocol import OP, Status, build_command_packet, parse_response_packet
+from protocol import (OP, RESPONSE_SIZE, Status, build_command_packet,
+                      parse_response_packet)
 
 
 @pytest.mark.parametrize(
     "seq_id,op,param,direction",
     [
-        (1, OP.MOVE, 50, 1),
-        (2, OP.ROTATE, 90, 0),
+        (1, OP.QUEUE_MOVE, 50, 1),
+        (2, OP.QUEUE_ROTATE, 90, 0),
     ],
 )
 def test_move_rotate_command(serial_conn, seq_id, op, param, direction):
@@ -24,13 +25,13 @@ def test_move_rotate_command(serial_conn, seq_id, op, param, direction):
     cmd = build_command_packet(seq_id, op, param, direction)
     serial_conn.write(cmd)
 
-    resp_data = serial_conn.read(2)
-    resp_seq_id, resp_status = parse_response_packet(resp_data)
+    resp_data = serial_conn.read(RESPONSE_SIZE)
+    resp_seq_id, resp_status, _, _ = parse_response_packet(resp_data)
     assert resp_seq_id == seq_id
     assert resp_status == Status.OK
 
-    resp_data = serial_conn.read(2)
-    resp_seq_id, resp_status = parse_response_packet(resp_data)
+    resp_data = serial_conn.read(RESPONSE_SIZE)
+    resp_seq_id, resp_status, _, _ = parse_response_packet(resp_data)
     assert resp_seq_id == seq_id
     assert resp_status == Status.SUCCESS
 
@@ -40,8 +41,8 @@ def test_stop_command(serial_conn):
     cmd = build_command_packet(3, OP.STOP, 0, 0)
     serial_conn.write(cmd)
 
-    resp_data = serial_conn.read(2)
-    resp_seq_id, resp_status = parse_response_packet(resp_data)
+    resp_data = serial_conn.read(RESPONSE_SIZE)
+    resp_seq_id, resp_status, _, _ = parse_response_packet(resp_data)
     assert resp_seq_id == 3
     assert resp_status == Status.SUCCESS
 
@@ -49,13 +50,13 @@ def test_stop_command(serial_conn):
 def test_queue_full_rejection(serial_conn):
     """Test: send 5 commands rapidly and verify the 5th is rejected due to queue full."""
     for seq_id in [10, 11, 12, 13, 14]:
-        cmd = build_command_packet(seq_id, OP.MOVE, 10000, 0)
+        cmd = build_command_packet(seq_id, OP.QUEUE_MOVE, 10000, 0)
         serial_conn.write(cmd)
 
     responses = []
     for _ in range(5):
-        resp_data = serial_conn.read(2)
-        resp_seq_id, resp_status = parse_response_packet(resp_data)
+        resp_data = serial_conn.read(RESPONSE_SIZE)
+        resp_seq_id, resp_status, _, _ = parse_response_packet(resp_data)
         responses.append(resp_status)
 
     assert all(s == Status.OK for s in responses[:4])

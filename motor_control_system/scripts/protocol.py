@@ -3,9 +3,10 @@ from enum import IntEnum
 
 
 class OP:
-    MOVE = 1
-    ROTATE = 2
+    QUEUE_MOVE = 1
+    QUEUE_ROTATE = 2
     STOP = 3
+    POLL_W = 4
 
 
 class Status(IntEnum):
@@ -19,5 +20,8 @@ def build_command_packet(seq_id, operation, arg, direction=0):
 
 
 def parse_response_packet(data):
-    seq_id, status = struct.unpack("<BB", data[:2])
-    return seq_id, Status(status)
+    fmt = "<BBff"
+    size = struct.calcsize(fmt)  # 10
+
+    seq_id, status, w1, w2 = struct.unpack(fmt, data[:size])
+    return seq_id, Status(status), w1, w2

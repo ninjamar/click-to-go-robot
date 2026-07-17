@@ -34,12 +34,10 @@ struct ResponsePacket {
 class SerialProtocol {
 public:
     SerialProtocol(Stream& serial)
-        : _serial(serial)
-    {
+        : _serial(serial) {
     }
 
-    bool readCommand(CommandPacket& out)
-    {
+    bool readCommand(CommandPacket& out) {
         if (_serial.available() < static_cast<int>(sizeof(CommandPacket))) {
             return false;
         }
@@ -55,21 +53,18 @@ public:
         return true;
     }
 
-    void sendResponse(const CommandPacket& pk, ResponseStatus status, float w1, float w2)
-    {
+    void sendResponse(const CommandPacket& pk, ResponseStatus status, float w1, float w2) {
         sendResponsePacket(buildResponse(pk, status, w1, w2));
     }
 
-    void sendStatus(const CommandPacket& pk, ResponseStatus status)
-    {
+    void sendStatus(const CommandPacket& pk, ResponseStatus status) {
         sendResponse(pk, status, 0.0f, 0.0f); // 0.0 is double. 0.0f is float
     }
 
 private:
     Stream& _serial;
 
-    ResponsePacket buildResponse(const CommandPacket& in, uint8_t status, float w1 = 0.0f, float w2 = 0.0f)
-    {
+    ResponsePacket buildResponse(const CommandPacket& in, uint8_t status, float w1 = 0.0f, float w2 = 0.0f) {
         ResponsePacket resp;
         resp.seq_id = in.seq_id;
         resp.status = status;
@@ -78,8 +73,7 @@ private:
         return resp;
     }
 
-    void sendResponsePacket(const ResponsePacket& packet)
-    {
+    void sendResponsePacket(const ResponsePacket& packet) {
         _serial.write(
             reinterpret_cast<const uint8_t*>(&packet),
             sizeof(ResponsePacket));

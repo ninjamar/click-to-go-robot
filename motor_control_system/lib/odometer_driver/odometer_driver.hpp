@@ -10,13 +10,11 @@ public:
         : pinA1(pinA1)
         , pinB1(pinB1)
         , pinA2(pinA2)
-        , pinB2(pinB2)
-    {
+        , pinB2(pinB2) {
         _instance = this;
     }
 
-    void begin()
-    {
+    void begin() {
         // give pin interrupt capability
         pinMode(pinA1, INPUT_PULLUP);
         pinMode(pinB1, INPUT_PULLUP);
@@ -34,8 +32,7 @@ public:
         lastPollTime = millis();
     }
 
-    void poll(float& w1, float& w2)
-    {
+    void poll(float& w1, float& w2) {
         // w is omega. units in angular velocity
         // ISR increments count. Get a copy of it and find time difference
 
@@ -73,8 +70,7 @@ private:
 
     static OdometerDriver* _instance; // static so belongs to class not instance
 
-    static float computeW(long count, unsigned long delta)
-    {
+    static float computeW(long count, unsigned long delta) {
         // W = omega = angular velocity
         // w = delta theta / delta t
         // delta theta = (pulses / ppr) * 2pi
@@ -88,22 +84,25 @@ private:
         return (count / (float)ENCODER_PULSES_PER_REV) * (2 * PI) / sec;
     }
 
-    void handleMotor1()
-    {
+    void handleMotor1() {
         bool a = digitalRead(pinA1);
         bool b = digitalRead(pinB1);
         count1 += (a == b) ? 1 : -1;
     }
 
-    void handleMotor2()
-    {
+    void handleMotor2() {
         bool a = digitalRead(pinA2);
         bool b = digitalRead(pinB2);
         count2 += (a == b) ? 1 : -1;
     }
 
-    static void isrMotor1() { _instance->handleMotor1(); }
-    static void isrMotor2() { _instance->handleMotor2(); }
+    static void isrMotor1() {
+        _instance->handleMotor1();
+    }
+
+    static void isrMotor2() {
+        _instance->handleMotor2();
+    }
 };
 
 // Doesn't belong to any specific instance so we set it here.

@@ -27,47 +27,45 @@ bool activeStarted = false;
 bool pollPending = false;
 CommandPacket pollRequest;
 
-void setup()
-{
+void setup() {
     Serial.begin(BAUD_RATE);
     odometerDriver.begin();
 }
 
-void loop()
-{
+void loop() {
     // Intake
     CommandPacket packet;
     if (serialProtocol.readCommand(packet)) {
         switch (packet.operation) {
-        // Handle non-queue operations
-        case OP_STOP:
-            motorDriver.stop();
-            isActive = false;
-            serialProtocol.sendStatus(packet, STATUS_SUCCESS);
-            break;
-        case OP_POLL_W:
-            if (!isActive) {
-                float w1;
-                float w2;
-                odometerDriver.poll(w1, w2);
-                serialProtocol.sendResponse(packet, STATUS_SUCCESS, w1, w2);
-            } else {
-                pollPending = true;
-                pollRequest = packet;
-            }
-            break;
-        default:
-            // Queued operations: add them to the queue
-            uint8_t totalPending = queueCount + (isActive ? 1 : 0);
-            if (totalPending < QUEUE_SIZE) {
-                uint8_t tail = (queueHead + queueCount) % QUEUE_SIZE;
-                queue[tail] = packet;
-                queueCount++;
-                serialProtocol.sendStatus(packet, STATUS_OK);
-            } else {
-                serialProtocol.sendStatus(packet, STATUS_REJECTED_FULL);
-            }
-            break;
+            // Handle non-queue operations
+            case OP_STOP:
+                motorDriver.stop();
+                isActive = false;
+                serialProtocol.sendStatus(packet, STATUS_SUCCESS);
+                break;
+            case OP_POLL_W:
+                if (!isActive) {
+                    float w1;
+                    float w2;
+                    odometerDriver.poll(w1, w2);
+                    serialProtocol.sendResponse(packet, STATUS_SUCCESS, w1, w2);
+                } else {
+                    pollPending = true;
+                    pollRequest = packet;
+                }
+                break;
+            default:
+                // Queued operations: add them to the queue
+                uint8_t totalPending = queueCount + (isActive ? 1 : 0);
+                if (totalPending < QUEUE_SIZE) {
+                    uint8_t tail = (queueHead + queueCount) % QUEUE_SIZE;
+                    queue[tail] = packet;
+                    queueCount++;
+                    serialProtocol.sendStatus(packet, STATUS_OK);
+                } else {
+                    serialProtocol.sendStatus(packet, STATUS_REJECTED_FULL);
+                }
+                break;
         }
     }
 
@@ -101,12 +99,12 @@ void loop()
     // Start the active command
     if (isActive && !activeStarted) {
         switch (activeCommand.operation) {
-        case OP_QUEUE_MOVE:
-            motorDriver.move(activeCommand.arg, activeCommand.direction);
-            break;
-        case OP_QUEUE_ROTATE:
-            motorDriver.rotate(activeCommand.arg, activeCommand.direction);
-            break;
+            case OP_QUEUE_MOVE:
+                motorDriver.move(activeCommand.arg, activeCommand.direction);
+                break;
+            case OP_QUEUE_ROTATE:
+                motorDriver.rotate(activeCommand.arg, activeCommand.direction);
+                break;
         }
         activeStarted = true;
     }

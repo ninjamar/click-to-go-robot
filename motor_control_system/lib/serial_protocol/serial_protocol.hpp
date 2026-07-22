@@ -6,18 +6,34 @@
 //   OP_QUEUE_MOVE / OP_QUEUE_ROTATE   -> duration, seconds
 //   OP_QUEUE_MOVE_DIST                -> distance, meters
 //   OP_QUEUE_ROTATE_ANGLE             -> angle, radians
+//   OP_DEBUG_RUN_N_ROTATIONS          -> number of raw motor-shaft rotations (e.g. 2.5).
+//                                         Measured directly off encoder pulses via
+//                                         ENCODER_PULSES_PER_REV - independent of
+//                                         WHEEL_RADIUS_M/GEAR_RATIO/TRACK_WIDTH_M, so it stays
+//                                         valid while those are still uncalibrated placeholders.
+//   OP_DEBUG_SET_PWM                  -> raw PWM duty cycle, 0-255. No ramp. Holds until
+//                                         OP_STOP or MAX_COMMAND_MS elapses.
 //   OP_STOP / OP_POLL_W               -> unused (0)
 //
 // CommandPacket.direction meaning depends on the operation too:
 //   OP_QUEUE_MOVE / OP_QUEUE_MOVE_DIST      -> forward(+1) / backward(-1) / stop(0)
 //   OP_QUEUE_ROTATE / OP_QUEUE_ROTATE_ANGLE -> CCW(+1) / CW(-1) / stop(0)
+//   OP_DEBUG_RUN_N_ROTATIONS                -> forward(+1) / backward(-1) / stop(0) of the
+//                                               motor shaft (same convention as OP_QUEUE_MOVE -
+//                                               this is a single-shaft test, not a chassis turn)
+//   OP_DEBUG_SET_PWM                        -> forward(+1) / backward(-1); direction=0 stops
+//                                               the motor but the command stays "active" (holding
+//                                               a 0-duty stop) until OP_STOP/timeout - send
+//                                               OP_STOP instead if you want to fully release it
 enum CommandOperation {
     OP_QUEUE_MOVE = 1,
     OP_QUEUE_ROTATE = 2,
     OP_STOP = 3,
     OP_POLL_W = 4,
     OP_QUEUE_MOVE_DIST = 5,
-    OP_QUEUE_ROTATE_ANGLE = 6
+    OP_QUEUE_ROTATE_ANGLE = 6,
+    OP_DEBUG_RUN_N_ROTATIONS = 7,
+    OP_DEBUG_SET_PWM = 8
 };
 
 enum ResponseStatus {

@@ -24,9 +24,12 @@ CommandPacket activeCommand;
 unsigned long activeStartTime = 0;
 unsigned long lastTickTime = 0;
 
-// Progress accumulators for OP_QUEUE_MOVE_DIST / OP_QUEUE_ROTATE_ANGLE only —
-// unsigned running totals of "how far/how much have I gone", regardless of
-// direction, compared against activeCommand.arg (also unsigned magnitude).
+// Progress accumulators for the odometer-driven ops only — unsigned running
+// totals of "how far/how much have I gone", regardless of direction, compared
+// against activeCommand.arg (also unsigned magnitude). accumulatedRad is
+// dual-purpose: chassis heading angle for OP_QUEUE_ROTATE_ANGLE, or raw motor
+// shaft angle for OP_DEBUG_RUN_N_ROTATIONS - only one command is ever active
+// at a time, so there's no conflict, just don't read it across a dispatch.
 float accumulatedM = 0.0f;
 float accumulatedRad = 0.0f;
 
@@ -40,8 +43,28 @@ void setup() {
     odometerDriver.begin();
 }
 
-bool isDistanceOp(uint8_t op) {
-    return op == OP_QUEUE_MOVE_DIST || op == OP_QUEUE_ROTATE_ANGLE;
+// Classifies the active command's progress-tracking style, so the control
+// tick below can dispatch on one thing instead of re-deriving it in several
+// places.
+enum ActiveOpKind : uint8_t {
+    KIND_TIME_MOVE, // OP_QUEUE_MOVE / OP_QUEUE_ROTATE - duration-based
+    KIND_DISTANCE, // OP_QUEUE_MOVE_DIST / OP_QUEUE_ROTATE_ANGLE - wheel-geometry-based
+    KIND_SHAFT_ROTATION, // OP_DEBUG_RUN_N_ROTATIONS - raw motor shaft angle
+    KIND_RAW_PWM // OP_DEBUG_SET_PWM - no progress metric, runs until stopped
+};
+
+ActiveOpKind classifyOp(uint8_t op) {
+    switch (op) {
+        case OP_QUEUE_MOVE_DIST:
+        case OP_QUEUE_ROTATE_ANGLE:
+            return KIND_DISTANCE;
+        case OP_DEBUG_RUN_N_ROTATIONS:
+            return KIND_SHAFT_ROTATION;
+        case OP_DEBUG_SET_PWM:
+            return KIND_RAW_PWM;
+        default: // OP_QUEUE_MOVE, OP_QUEUE_ROTATE
+            return KIND_TIME_MOVE;
+    }
 }
 
 // Two independent fixed ramps — up from MIN_PWM over RAMP_UP_MS, down to
@@ -49,13 +72,13 @@ bool isDistanceOp(uint8_t op) {
 // A move shorter than RAMP_UP_MS + rampDownAt never reaches MAX_PWM; no
 // separate short-move case needed.
 uint8_t computeRampedPwm(unsigned long elapsedMs, float remaining, float rampDownAt) {
-    float pwmUp = MIN_PWM + (MAX_PWM - MIN_PWM) * min(elapsedMs / (float)RAMP_UP_MS, 1.0f);
+    float pwmUp = MIN_PWM + (MAX_PWM - MIN_PWM) * min(elapsedMs / static_cast<float>(RAMP_UP_MS), 1.0f);
     float pwmDown = MIN_PWM + (MAX_PWM - MIN_PWM) * min(remaining / rampDownAt, 1.0f);
     float pwm = min(pwmUp, pwmDown);
     if (pwm < MIN_PWM) {
         pwm = MIN_PWM;
     }
-    return (uint8_t)pwm;
+    return static_cast<uint8_t>(pwm);
 }
 
 void sendVelocityResponse(const CommandPacket& pk, ResponseStatus status) {
@@ -65,7 +88,7 @@ void sendVelocityResponse(const CommandPacket& pk, ResponseStatus status) {
     // The encoder only measures rotation magnitude reliably (see
     // odometer_driver.hpp) - direction comes from what we commanded, not
     // from the encoder itself.
-    float sign = isActive ? (float)activeCommand.direction : 0.0f;
+    float sign = isActive ? static_cast<float>(activeCommand.direction) : 0.0f;
     w1 *= sign;
     w2 *= sign;
     float v1 = w1 * WHEEL_RADIUS_M / GEAR_RATIO;
@@ -114,49 +137,71 @@ void loop() {
         unsigned long elapsedMs = now - activeStartTime;
         lastTickTime = now;
 
+        ActiveOpKind kind = classifyOp(activeCommand.operation);
+
         bool done = false;
         ResponseStatus doneStatus = STATUS_SUCCESS;
-        float remaining;
-        float rampDownAt;
+        float remaining = 0.0f;
+        float rampDownAt = 1.0f; // unused for KIND_RAW_PWM
 
-        if (isDistanceOp(activeCommand.operation)) {
+        if (kind == KIND_RAW_PWM) {
+            // No progress metric - this op only ends via OP_STOP or this watchdog.
+            done = elapsedMs > MAX_COMMAND_MS;
+            doneStatus = STATUS_TIMEOUT;
+        } else if (kind == KIND_DISTANCE || kind == KIND_SHAFT_ROTATION) {
             float w1;
             float w2;
             odometerDriver.poll(w1, w2);
             float dt = MS_TO_S(CONTROL_TICK_MS);
-            float dsA = w1 * dt / GEAR_RATIO * WHEEL_RADIUS_M;
-            float dsB = w2 * dt / GEAR_RATIO * WHEEL_RADIUS_M;
 
-            if (activeCommand.operation == OP_QUEUE_MOVE_DIST) {
-                accumulatedM += fabs((dsA + dsB) / 2.0f);
-                remaining = activeCommand.arg - accumulatedM;
-                rampDownAt = RAMP_DOWN_DISTANCE_M;
-                done = accumulatedM >= activeCommand.arg;
-            } else { // OP_QUEUE_ROTATE_ANGLE
-                accumulatedRad += fabs((dsB - dsA) / TRACK_WIDTH_M);
-                remaining = activeCommand.arg - accumulatedRad;
+            if (kind == KIND_SHAFT_ROTATION) {
+                // Raw shaft angle - deliberately skips WHEEL_RADIUS_M/GEAR_RATIO/
+                // TRACK_WIDTH_M, since those are exactly what this op calibrates.
+                accumulatedRad += fabs(w2) * dt;
+                float targetRad = activeCommand.arg * (2 * PI);
+                remaining = targetRad - accumulatedRad;
                 rampDownAt = RAMP_DOWN_ANGLE_RAD;
-                done = accumulatedRad >= activeCommand.arg;
+                done = accumulatedRad >= targetRad;
+            } else {
+                float dsA = w1 * dt / GEAR_RATIO * WHEEL_RADIUS_M;
+                float dsB = w2 * dt / GEAR_RATIO * WHEEL_RADIUS_M;
+
+                if (activeCommand.operation == OP_QUEUE_MOVE_DIST) {
+                    accumulatedM += fabs((dsA + dsB) / 2.0f);
+                    remaining = activeCommand.arg - accumulatedM;
+                    rampDownAt = RAMP_DOWN_DISTANCE_M;
+                    done = accumulatedM >= activeCommand.arg;
+                } else { // OP_QUEUE_ROTATE_ANGLE
+                    accumulatedRad += fabs((dsB - dsA) / TRACK_WIDTH_M);
+                    remaining = activeCommand.arg - accumulatedRad;
+                    rampDownAt = RAMP_DOWN_ANGLE_RAD;
+                    done = accumulatedRad >= activeCommand.arg;
+                }
             }
 
             if (!done && elapsedMs > MAX_COMMAND_MS) {
                 done = true;
                 doneStatus = STATUS_TIMEOUT;
             }
-        } else { // OP_QUEUE_MOVE or OP_QUEUE_ROTATE
+        } else { // KIND_TIME_MOVE: OP_QUEUE_MOVE or OP_QUEUE_ROTATE
             float totalMs = S_TO_MS(activeCommand.arg);
             remaining = totalMs - elapsedMs;
-            rampDownAt = (float)RAMP_DOWN_MS;
-            done = elapsedMs >= (unsigned long)totalMs;
+            rampDownAt = static_cast<float>(RAMP_DOWN_MS);
+            done = elapsedMs >= static_cast<unsigned long>(totalMs);
         }
 
         if (done) {
             motorDriver.stop();
             serialProtocol.sendStatus(activeCommand, doneStatus);
             isActive = false;
+        } else if (kind == KIND_RAW_PWM) {
+            auto pwm = static_cast<uint8_t>(constrain(activeCommand.arg, 0.0f, static_cast<float>(MAX_PWM)));
+            motorDriver.driveMove(activeCommand.direction, pwm);
         } else {
             uint8_t pwm = computeRampedPwm(elapsedMs, max(remaining, 0.0f), rampDownAt);
-            if (activeCommand.operation == OP_QUEUE_MOVE || activeCommand.operation == OP_QUEUE_MOVE_DIST) {
+            if (activeCommand.operation == OP_QUEUE_MOVE
+                || activeCommand.operation == OP_QUEUE_MOVE_DIST
+                || activeCommand.operation == OP_DEBUG_RUN_N_ROTATIONS) {
                 motorDriver.driveMove(activeCommand.direction, pwm);
             } else {
                 motorDriver.driveRotate(activeCommand.direction, pwm);

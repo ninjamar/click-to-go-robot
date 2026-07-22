@@ -87,7 +87,7 @@ private:
             return 0.0f;
         }
         float sec = MS_TO_S(delta);
-        return (count / (float)ENCODER_PULSES_PER_REV) * (2 * PI) / sec;
+        return (count / static_cast<float>(ENCODER_PULSES_PER_REV)) * (2 * PI) / sec;
     }
 
     // The two readers are two independently-mounted photointerrupters, not a

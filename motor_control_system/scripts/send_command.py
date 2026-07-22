@@ -8,6 +8,8 @@ Usage:
     python send_command.py --operation move_dist 0.5 --port /dev/cu.usbserial-XXXX
     python send_command.py --operation rotate_angle 1.5708 --port /dev/cu.usbserial-XXXX
     python send_command.py --operation stop 0 --port /dev/cu.usbserial-XXXX
+    python send_command.py --operation debug_run_n_rotations 2.5 --port /dev/cu.usbserial-XXXX
+    python send_command.py --operation debug_set_pwm 80 --direction 1 --port /dev/cu.usbserial-XXXX
 """
 
 import argparse
@@ -24,13 +26,15 @@ def main():
         "-op",
         "--operation",
         required=True,
-        help="Operation: 'move', 'rotate', 'move_dist', 'rotate_angle', 'stop', 'poll_w'",
+        help="Operation: 'move', 'rotate', 'move_dist', 'rotate_angle', 'stop', 'poll_w', "
+        "'debug_run_n_rotations', 'debug_set_pwm'",
     )
     parser.add_argument(
         "arg",
         type=float,
         help="Duration (s) for move/rotate, distance (m) for move_dist, "
-        "angle (rad) for rotate_angle, or 0 for stop/poll_w",
+        "angle (rad) for rotate_angle, rotations for debug_run_n_rotations, "
+        "raw PWM (0-255) for debug_set_pwm, or 0 for stop/poll_w",
         default=0.0,
         nargs="?",
     )
@@ -68,6 +72,8 @@ def main():
         "rotate_angle": OP.QUEUE_ROTATE_ANGLE,
         "stop": OP.STOP,
         "poll_w": OP.POLL_W,
+        "debug_run_n_rotations": OP.DEBUG_RUN_N_ROTATIONS,
+        "debug_set_pwm": OP.DEBUG_SET_PWM,
     }
     operation = OPERATION_MAP[args.operation]
 
@@ -92,7 +98,7 @@ def main():
             f"  w1={w1:.4f} rad/s, w2={w2:.4f} rad/s, v1={v1:.4f} m/s, v2={v2:.4f} m/s"
         )
 
-    if operation not in (OP.STOP, OP.POLL_W) and resp_status == Status.OK:
+    if operation not in (OP.STOP, OP.POLL_W, OP.DEBUG_SET_PWM) and resp_status == Status.OK:
         # Time-based ops know their duration up front (arg is seconds);
         # distance/angle ops don't — the board itself enforces a safety
         # cutoff (MAX_COMMAND_MS in config.hpp), so just wait generously.

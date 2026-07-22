@@ -9,6 +9,8 @@ class OP:
     POLL_W = 4
     QUEUE_MOVE_DIST = 5
     QUEUE_ROTATE_ANGLE = 6
+    DEBUG_RUN_N_ROTATIONS = 7
+    DEBUG_SET_PWM = 8
 
 
 class Status(IntEnum):

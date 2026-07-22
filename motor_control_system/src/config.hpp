@@ -45,7 +45,7 @@ const float TRACK_WIDTH_M = 0.15f;
 
 // Control loop
 const unsigned long CONTROL_TICK_MS = S_TO_MS(0.02f);
-const unsigned long MAX_COMMAND_MS = S_TO_MS(15.0f); // safety cutoff for MOVE_DIST/ROTATE_ANGLE
+const unsigned long MAX_COMMAND_MS = S_TO_MS(15.0f); // safety cutoff for any long-running active command
 
 // PWM ramp: fixed ramp-up duration, fixed ramp-down margin — not a
 // proportional curve. See computeRampedPwm() in main.cpp.

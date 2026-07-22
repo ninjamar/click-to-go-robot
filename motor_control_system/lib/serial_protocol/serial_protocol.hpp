@@ -2,23 +2,35 @@
 
 #include <Arduino.h>
 
+// CommandPacket.arg is a float, in the natural SI unit for the operation:
+//   OP_QUEUE_MOVE / OP_QUEUE_ROTATE   -> duration, seconds
+//   OP_QUEUE_MOVE_DIST                -> distance, meters
+//   OP_QUEUE_ROTATE_ANGLE             -> angle, radians
+//   OP_STOP / OP_POLL_W               -> unused (0)
+//
+// CommandPacket.direction meaning depends on the operation too:
+//   OP_QUEUE_MOVE / OP_QUEUE_MOVE_DIST      -> forward(+1) / backward(-1) / stop(0)
+//   OP_QUEUE_ROTATE / OP_QUEUE_ROTATE_ANGLE -> CCW(+1) / CW(-1) / stop(0)
 enum CommandOperation {
     OP_QUEUE_MOVE = 1,
     OP_QUEUE_ROTATE = 2,
     OP_STOP = 3,
-    OP_POLL_W = 4
+    OP_POLL_W = 4,
+    OP_QUEUE_MOVE_DIST = 5,
+    OP_QUEUE_ROTATE_ANGLE = 6
 };
 
 enum ResponseStatus {
     STATUS_OK = 0,
     STATUS_SUCCESS = 1,
     STATUS_REJECTED_FULL = 2,
+    STATUS_TIMEOUT = 3,
 };
 
 struct CommandPacket {
     uint8_t seq_id;
     uint8_t operation; // Operation
-    uint64_t arg;
+    float arg; // meaning depends on operation, see above
     int8_t direction; // -1, 0, or 1
     // uint8_t checksum;
 } __attribute__((packed)); // Pack it tightly to match Python.
@@ -28,6 +40,8 @@ struct ResponsePacket {
     uint8_t status; // ResponseStatus
     float w1; // angular velocity of motor A's raw output shaft, rad/s
     float w2; // angular velocity of motor B's raw output shaft, rad/s
+    float v1; // linear velocity of wheel A, m/s
+    float v2; // linear velocity of wheel B, m/s
     // uint8_t checksum;
 } __attribute__((packed));
 
@@ -53,23 +67,25 @@ public:
         return true;
     }
 
-    void sendResponse(const CommandPacket& pk, ResponseStatus status, float w1, float w2) {
-        sendResponsePacket(buildResponse(pk, status, w1, w2));
+    void sendResponse(const CommandPacket& pk, ResponseStatus status, float w1, float w2, float v1, float v2) {
+        sendResponsePacket(buildResponse(pk, status, w1, w2, v1, v2));
     }
 
     void sendStatus(const CommandPacket& pk, ResponseStatus status) {
-        sendResponse(pk, status, 0.0f, 0.0f); // 0.0 is double. 0.0f is float
+        sendResponse(pk, status, 0.0f, 0.0f, 0.0f, 0.0f);
     }
 
 private:
     Stream& _serial;
 
-    ResponsePacket buildResponse(const CommandPacket& in, uint8_t status, float w1 = 0.0f, float w2 = 0.0f) {
+    ResponsePacket buildResponse(const CommandPacket& in, uint8_t status, float w1, float w2, float v1, float v2) {
         ResponsePacket resp;
         resp.seq_id = in.seq_id;
         resp.status = status;
         resp.w1 = w1;
         resp.w2 = w2;
+        resp.v1 = v1;
+        resp.v2 = v2;
         return resp;
     }
 

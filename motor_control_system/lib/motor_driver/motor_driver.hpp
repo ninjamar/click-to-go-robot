@@ -4,28 +4,43 @@
 
 class MotorDriver {
 public:
-    MotorDriver(uint8_t pinIN1_A, uint8_t pinIN2_A, uint8_t pinIN1_B, uint8_t pinIN2_B)
-        : _motors(pinIN1_A, pinIN2_A, pinIN1_B, pinIN2_B) {
+    MotorDriver(uint8_t pinEnA, uint8_t pinIN1_A, uint8_t pinIN2_A,
+        uint8_t pinEnB, uint8_t pinIN1_B, uint8_t pinIN2_B)
+        : _motors(pinEnA, pinIN1_A, pinIN2_A, pinEnB, pinIN1_B, pinIN2_B) {
     }
 
-    void move(uint64_t duration, int8_t direction) {
-        L298N::Direction dir = direction > 0
-            ? L298N::FORWARD
-            : (direction < 0 ? L298N::BACKWARD : L298N::STOP);
-        _motors.runFor(duration, dir);
+    // Sets both motors to the same direction at the given duty cycle.
+    // No internal timing — caller (main.cpp's control tick) is the sole
+    // authority on when to stop; this just applies "right now".
+    void driveMove(int8_t direction, uint8_t pwm) {
+        applyDirection(direction, /*opposite=*/false);
+        _motors.setSpeed(pwm);
     }
 
-    void rotate(uint64_t duration, int8_t direction) {
+    // Sets the two motors to opposite directions (in-place rotation).
+    void driveRotate(int8_t direction, uint8_t pwm) {
+        applyDirection(direction, /*opposite=*/true);
+        _motors.setSpeed(pwm);
     }
 
     void stop() {
         _motors.stop();
     }
 
-    L298NX2& getMotors() {
-        return _motors;
-    }
-
 private:
     L298NX2 _motors;
+
+    void applyDirection(int8_t direction, bool opposite) {
+        if (direction > 0) {
+            // TODO: MOTOR_A
+            // _motors.forwardA();
+            opposite ? _motors.backwardB() : _motors.forwardB();
+        } else if (direction < 0) {
+            // TODO: MOTOR_A
+            // _motors.backwardA();
+            opposite ? _motors.forwardB() : _motors.backwardB();
+        } else {
+            _motors.stop();
+        }
+    }
 };

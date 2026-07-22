@@ -1,33 +1,38 @@
 #pragma once
 
 #include "config.hpp"
+#include "macros.hpp"
 #include <Arduino.h>
 #include <EnableInterrupt.h>
 
 class OdometerDriver {
 public:
-    OdometerDriver(uint8_t pinA1, uint8_t pinB1, uint8_t pinA2, uint8_t pinB2)
-        : pinA1(pinA1)
-        , pinB1(pinB1)
-        , pinA2(pinA2)
-        , pinB2(pinB2) {
+    OdometerDriver(uint8_t pin1ChA, uint8_t pin1ChB, uint8_t pin2ChA, uint8_t pin2ChB)
+        : pin1ChA(pin1ChA)
+        , pin1ChB(pin1ChB)
+        , pin2ChA(pin2ChA)
+        , pin2ChB(pin2ChB) {
         _instance = this;
     }
 
     void begin() {
         // give pin interrupt capability
-        pinMode(pinA1, INPUT_PULLUP);
-        pinMode(pinB1, INPUT_PULLUP);
-        pinMode(pinA2, INPUT_PULLUP);
-        pinMode(pinB2, INPUT_PULLUP);
+        pinMode(pin1ChA, INPUT_PULLUP);
+        pinMode(pin1ChB, INPUT_PULLUP);
+        pinMode(pin2ChA, INPUT_PULLUP);
+        pinMode(pin2ChB, INPUT_PULLUP);
 
         // call isr function when pin changes
         // isr has to be c function. so we don't give a member function which in c is static.
         // but since this static functio needs to access class, we store a pointer to the current class.
-        enableInterrupt(pinA1, isrMotor1, CHANGE);
-        enableInterrupt(pinB1, isrMotor1, CHANGE);
-        enableInterrupt(pinA2, isrMotor2, CHANGE);
-        enableInterrupt(pinB2, isrMotor2, CHANGE);
+
+        // TODO: MOTOR_A
+        // enableInterrupt(pin1ChA, isrMotor1, CHANGE);
+        // enableInterrupt(pin1ChB, isrMotor1, CHANGE);
+
+        // TODO: enable/disable for testing
+        enableInterrupt(pin2ChA, isrMotor2, CHANGE);
+        enableInterrupt(pin2ChB, isrMotor2, CHANGE);
 
         lastPollTime = millis();
     }
@@ -38,8 +43,8 @@ public:
 
         // Disable interrupts so count doesn't change
         noInterrupts();
-        long c1 = count1;
-        long c2 = count2;
+        unsigned long c1 = count1;
+        unsigned long c2 = count2;
 
         unsigned long now = millis();
         unsigned long delta = now - lastPollTime;
@@ -56,21 +61,22 @@ public:
 
 private:
     // interrupt pins
-    uint8_t pinA1;
-    uint8_t pinA2;
-    uint8_t pinB1;
-    uint8_t pinB2;
+    uint8_t pin1ChA;
+    uint8_t pin1ChB;
+    uint8_t pin2ChA;
+    uint8_t pin2ChB;
 
     // volatile since the ISR changes these asyncronously. they can update any time.
     // this prevents the compiler from caching/optimizing it away.
-    volatile long count1 = 0;
-    volatile long count2 = 0;
+    // Unsigned pulse counts (magnitude only) - see handleMotor1/handleMotor2.
+    volatile unsigned long count1 = 0;
+    volatile unsigned long count2 = 0;
 
     unsigned long lastPollTime = 0;
 
     static OdometerDriver* _instance; // static so belongs to class not instance
 
-    static float computeW(long count, unsigned long delta) {
+    static float computeW(unsigned long count, unsigned long delta) {
         // W = omega = angular velocity
         // w = delta theta / delta t
         // delta theta = (pulses / ppr) * 2pi
@@ -80,20 +86,23 @@ private:
             // if deltais 0, don't bother
             return 0.0f;
         }
-        float sec = delta / 1000.0f;
+        float sec = MS_TO_S(delta);
         return (count / (float)ENCODER_PULSES_PER_REV) * (2 * PI) / sec;
     }
 
+    // The two readers are two independently-mounted photointerrupters, not a
+    // manufactured quadrature pair - there's no guarantee they sit at a clean
+    // 90 degree phase offset, so a Gray-code/quadrature decode can't reliably
+    // tell direction from the two channels (near-simultaneous A/B edges make
+    // it a timing race). Instead we just tally raw edges from both channels
+    // as a magnitude-only pulse count; direction is supplied by the caller
+    // from the commanded motor direction instead of being derived here.
     void handleMotor1() {
-        bool a = digitalRead(pinA1);
-        bool b = digitalRead(pinB1);
-        count1 += (a == b) ? 1 : -1;
+        count1++;
     }
 
     void handleMotor2() {
-        bool a = digitalRead(pinA2);
-        bool b = digitalRead(pinB2);
-        count2 += (a == b) ? 1 : -1;
+        count2++;
     }
 
     static void isrMotor1() {

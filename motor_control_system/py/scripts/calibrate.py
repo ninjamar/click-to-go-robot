@@ -1,9 +1,6 @@
 """
-Interactive helpers for calibrating GEAR_RATIO and MIN_PWM against real
-hardware. ENCODER_PULSES_PER_REV isn't here - it's derived analytically from
-disk geometry (blade count x edges/blade x active channels), not measured.
-Each subcommand walks you through one measurement and prints the resulting
-constant - neither writes to config.hpp for you.
+Interactive helpers for calibrating GEAR_RATIO and MIN_PWM. Doesn't write to
+config.hpp - just prints the measured value for you to enter yourself.
 
 Usage (run from motor_control_system/py/):
     python -m scripts.calibrate gear-ratio --port /dev/cu.usbserial-XXXX --wheel-revs 0.25

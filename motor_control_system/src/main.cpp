@@ -12,8 +12,7 @@ SerialProtocol serialProtocol(Serial);
 
 // Command queue state
 CommandPacket queue[QUEUE_SIZE]; // NOLINT(modernize-avoid-c-arrays)
-// This is a circular buffer: the pop operation would require a shift of each item.
-// So, a circular buffer is used.
+// Circular buffer; avoids shifting every element on pop.
 uint8_t queueHead = 0; // index of oldest item
 uint8_t queueCount = 0; // number of items in queue
 // tail = index where new item should be added
@@ -24,12 +23,8 @@ CommandPacket activeCommand;
 unsigned long activeStartTime = 0;
 unsigned long lastTickTime = 0;
 
-// Progress accumulators for the odometer-driven ops only — unsigned running
-// totals of "how far/how much have I gone", regardless of direction, compared
-// against activeCommand.arg (also unsigned magnitude). accumulatedRad is
-// dual-purpose: chassis heading angle for OP_QUEUE_ROTATE_ANGLE, or raw motor
-// shaft angle for OP_DEBUG_RUN_N_ROTATIONS - only one command is ever active
-// at a time, so there's no conflict, just don't read it across a dispatch.
+// Per-command progress toward activeCommand.arg; accumulatedRad is reused
+// across ROTATE_ANGLE and DEBUG_RUN_N_ROTATIONS (never both active at once).
 float accumulatedM = 0.0f;
 float accumulatedRad = 0.0f;
 
@@ -41,9 +36,8 @@ unsigned long lastProgressTime = 0;
 float totalDistanceA = 0.0f;
 float totalDistanceB = 0.0f;
 
-// Deferred OP_POLL_W/OP_POLL_DISTANCE request (single slot — a second poll
-// while one is already pending simply overwrites it; last request's seq_id
-// wins).
+// Deferred OP_POLL_W/OP_POLL_DISTANCE request; single slot, most recent
+// overwrites
 bool pollPending = false;
 CommandPacket pollRequest;
 
@@ -52,9 +46,7 @@ void setup() {
     odometerDriver.begin();
 }
 
-// Classifies the active command's progress-tracking style, so the control
-// tick below can dispatch on one thing instead of re-deriving it in several
-// places.
+// Classifies the active command's progress-tracking style for the control tick below.
 enum ActiveOpKind : uint8_t {
     KIND_TIME_MOVE, // OP_QUEUE_MOVE / OP_QUEUE_ROTATE - duration-based
     KIND_DISTANCE, // OP_QUEUE_MOVE_DIST / OP_QUEUE_ROTATE_ANGLE - wheel-geometry-based
@@ -76,10 +68,7 @@ ActiveOpKind classifyOp(uint8_t op) {
     }
 }
 
-// Two independent fixed ramps — up from MIN_PWM over RAMP_UP_MS, down to
-// MIN_PWM over the last rampDownAt (same units as remaining) — take the min.
-// A move shorter than RAMP_UP_MS + rampDownAt never reaches MAX_PWM; no
-// separate short-move case needed.
+// Two independent ramps (up over RAMP_UP_MS, down over the last rampDownAt), take the min.
 uint8_t computeRampedPwm(unsigned long elapsedMs, float remaining, float rampDownAt) {
     float pwmUp = MIN_PWM + (MAX_PWM - MIN_PWM) * min(elapsedMs / static_cast<float>(RAMP_UP_MS), 1.0f);
     float pwmDown = MIN_PWM + (MAX_PWM - MIN_PWM) * min(remaining / rampDownAt, 1.0f);
@@ -165,10 +154,7 @@ void loop() {
 
         ActiveOpKind kind = classifyOp(activeCommand.operation);
 
-        // Drain+accumulate every active tick regardless of kind - KIND_TIME_MOVE
-        // and KIND_RAW_PWM don't otherwise touch the odometer at all, which
-        // would silently drop their distance once isActive goes false (see
-        // pollAndAccumulate's isActive guard above).
+        // Call on every tick for distance
         float w1;
         float w2;
         pollAndAccumulate(w1, w2);
@@ -186,8 +172,7 @@ void loop() {
             float dt = MS_TO_S(CONTROL_TICK_MS);
 
             if (kind == KIND_SHAFT_ROTATION) {
-                // Raw shaft angle - deliberately skips WHEEL_RADIUS_M/GEAR_RATIO/
-                // TRACK_WIDTH_M, since those are exactly what this op calibrates.
+                // Raw shaft angle; independent of emperical constants
                 accumulatedRad += fabsf(w2) * dt;
 
                 float targetRad = activeCommand.arg * (2 * PI);
@@ -199,9 +184,7 @@ void loop() {
                 float dsB = w2 * dt / GEAR_RATIO * WHEEL_RADIUS_M;
 
                 if (activeCommand.operation == OP_QUEUE_MOVE_DIST) {
-                    // divisor = number of channels with real data this tick;
-                    // 0 when neither registered a pulse (e.g. still in
-                    // stiction at the start of ramp-up) - nothing to add.
+                    // Average only over channels with data
                     float divisor = ((dsA != 0.0f) ? 1.0f : 0.0f) + ((dsB != 0.0f) ? 1.0f : 0.0f);
                     if (divisor > 0.0f) {
                         accumulatedM += fabsf((dsA + dsB) / divisor);
@@ -261,7 +244,7 @@ void loop() {
         }
     }
 
-    // Poll (before the next queue command dispatches, so a poll is fulfiled before)
+    // Answer a deferred poll before the next queued command dispatches.
     if (pollPending) {
         sendVelocityResponse(pollRequest, STATUS_SUCCESS);
         pollPending = false;

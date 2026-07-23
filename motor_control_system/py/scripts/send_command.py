@@ -1,15 +1,9 @@
-#!/ usr / bin / env python
+#!/usr/bin/env python
 """
 Send a single command packet to the board via serial.
 
 Usage (run from motor_control_system/py/):
     python -m scripts.send_command --operation move 2.0 --port /dev/cu.usbserial-XXXX
-    python -m scripts.send_command --op rotate 1.5 --port /dev/cu.usbserial-XXXX --seq-id 42
-    python -m scripts.send_command --operation move_dist 0.5 --port /dev/cu.usbserial-XXXX
-    python -m scripts.send_command --operation rotate_angle 1.5708 --port /dev/cu.usbserial-XXXX
-    python -m scripts.send_command --operation stop 0 --port /dev/cu.usbserial-XXXX
-    python -m scripts.send_command --operation debug_run_n_rotations 2.5 --port /dev/cu.usbserial-XXXX
-    python -m scripts.send_command --operation debug_set_pwm 80 --direction 1 --port /dev/cu.usbserial-XXXX
 """
 
 import argparse
@@ -91,13 +85,11 @@ def main():
         )
 
     if operation in QUEUED_OPS and resp_status == Status.OK:
-        # Time-based ops know their duration up front (arg is seconds);
-        # distance/angle ops don't — the board itself enforces a safety
-        # cutoff (MAX_COMMAND_MS in config.hpp), so just wait generously.
+        # Distance/angle ops don't know their own duration - wait past MAX_COMMAND_MS in config.hpp.
         if operation in (OP.QUEUE_MOVE, OP.QUEUE_ROTATE):
             conn.timeout = args.arg + 2
         else:
-            conn.timeout = 20.0
+            conn.timeout = 125.0
         resp_data = b""
         while len(resp_data) < RESPONSE_SIZE:
             chunk = conn.read(RESPONSE_SIZE - len(resp_data))

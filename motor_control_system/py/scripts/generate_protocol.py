@@ -1,14 +1,7 @@
 """
 Generate protocol.py from serial_protocol.hpp via a real libclang parse.
 
-Usage:
-    just generate-protocol
-    (or directly: pio run -t compiledb && python py/scripts/generate_protocol.py)
-
-Requires motor_control_system/compile_commands.json to already exist (run
-`pio run -t compiledb` first) - this reuses PlatformIO's own compiler
-invocation for src/main.cpp so serial_protocol.hpp parses against the real
-Arduino/avr headers, not a hand-rolled stand-in.
+Usage: just generate-protocol (requires compile_commands.json - run `pio run -t compiledb` first)
 """
 
 import glob
@@ -47,10 +40,8 @@ def load_compile_args():
         raise SystemExit(f"No compile_commands.json entry for {MAIN_CPP}")
 
     tokens = shlex.split(entry["command"])
-    # tokens[0] is the compiler executable, e.g.
-    # ~/.platformio/packages/toolchain-atmelavr/bin/avr-g++ - derive the
-    # toolchain root from it rather than hardcoding a path, so this works on
-    # any machine/user regardless of PLATFORMIO_CORE_DIR.
+    # Derive the toolchain root from tokens[0] (the compiler path) instead of
+    # hardcoding it, so this works regardless of PLATFORMIO_CORE_DIR.
     toolchain = Path(tokens[0]).parent.parent
     if not toolchain.exists():
         raise SystemExit(f"AVR toolchain not found at {toolchain}")
@@ -68,9 +59,7 @@ def load_compile_args():
         args.append(tok)
         i += 1
 
-    # A real avr-g++ invocation implicitly knows where its own bundled
-    # avr-libc and gcc-internal builtin headers (stddef.h etc) live; a
-    # foreign compiler (libclang here) doesn't, so add them explicitly.
+    # libclang isn't avr-g++, so it doesn't know avr-g++'s own builtin include dirs - add them explicitly.
     gcc_builtin_include = glob.glob(str(toolchain / "lib/gcc/avr/*/include"))
     if not gcc_builtin_include:
         raise SystemExit(f"No gcc builtin include dir found under {toolchain}")
@@ -101,10 +90,7 @@ def find_decl(decls, name, kind):
 
 
 def is_queued(op_name):
-    """An op enters the board's command queue (rather than resolving
-    immediately) iff QUEUE appears in its name - mirrors the enum's own
-    naming convention (OP_QUEUE_MOVE, OP_QUEUE_ROTATE, ...) instead of
-    hand-maintaining a second list."""
+    """Mirrors the enum's own naming convention instead of hand-maintaining a second list."""
     return "QUEUE" in op_name
 
 
@@ -205,7 +191,7 @@ def parse_response_packet(data):
     )
     return ResponsePacket({return_values})
 
-# fmt: off
+# fmt: on
 '''
 
 

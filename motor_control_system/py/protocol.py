@@ -62,4 +62,4 @@ def parse_response_packet(data):
     )
     return ResponsePacket(seq_id, Status(status), is_active, w1, w2, v1, v2, d1, d2)
 
-# fmt: off
+# fmt: on

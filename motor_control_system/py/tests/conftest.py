@@ -26,12 +26,7 @@ def pytest_addoption(parser):
 
 @pytest.fixture(scope="session")
 def serial_conn(request):
-    """
-    Session-scoped fixture that opens the serial port once for all tests.
-
-    Waits for board reset (DTR) and clears the input buffer before yielding.
-    Closes the port after all tests complete.
-    """
+    """Opens the serial port once for all tests; waits for the DTR board reset first."""
     port_name = request.config.getoption("--port")
     baud = request.config.getoption("--baud")
 
@@ -60,13 +55,7 @@ def _drain(conn, timeout=0.05):
 
 @pytest.fixture(autouse=True)
 def reset_board(serial_conn):
-    """
-    Stop the motor and drain stray bytes before and after each test.
-
-    serial_conn is session-scoped and shared across all tests, so without
-    this a late or leftover response from one test (e.g. a timed-out command)
-    can desync the next test's reads.
-    """
+    """Stop the motor and drain stray bytes so a leftover response can't desync the next test."""
     serial_conn.write(build_command_packet(0, OP.STOP, 0, 0))
     serial_conn.timeout = 2
     serial_conn.read(RESPONSE_SIZE)

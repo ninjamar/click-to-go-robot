@@ -16,16 +16,12 @@ public:
     }
 
     void begin() {
-        // give pin interrupt capability
         pinMode(pin1ChA, INPUT_PULLUP);
         pinMode(pin1ChB, INPUT_PULLUP);
         pinMode(pin2ChA, INPUT_PULLUP);
         pinMode(pin2ChB, INPUT_PULLUP);
 
-        // call isr function when pin changes
-        // isr has to be c function. so we don't give a member function which in c is static.
-        // but since this static functio needs to access class, we store a pointer to the current class.
-
+        // ISRs must be free C functions, so _instance lets them reach this object.
         // TODO: Motor A
         // enableInterrupt(pin1ChA, isrMotor1, CHANGE);
         // enableInterrupt(pin1ChB, isrMotor1, CHANGE);
@@ -37,9 +33,7 @@ public:
         lastPollTime = millis();
     }
 
-    // dtSec is the real elapsed time this poll covers - callers that need
-    // exact angle (not just rate) recover it as w * dtSec, valid regardless
-    // of how long it's been since the last poll.
+    // dtSec is the real elapsed time covered, so callers can recover exact angle as w * dtSec.
     void poll(float& w1, float& w2, float& dtSec) {
         // w is omega. units in angular velocity
         // ISR increments count. Get a copy of it and find time difference
@@ -70,25 +64,19 @@ private:
     uint8_t pin2ChA;
     uint8_t pin2ChB;
 
-    // volatile since the ISR changes these asyncronously. they can update any time.
-    // this prevents the compiler from caching/optimizing it away.
-    // Unsigned pulse counts (magnitude only) - see handleMotor1/handleMotor2.
+    // volatile: the ISR updates these asynchronously, any time.
     volatile unsigned long count1 = 0;
     volatile unsigned long count2 = 0;
 
     unsigned long lastPollTime = 0;
 
-    static OdometerDriver* _instance; // static so belongs to class not instance
+    // static means method/field is tied to class not instance
+    static OdometerDriver* _instance; // lets the free-function ISRs reach this object
 
     static float computeW(unsigned long count, unsigned long delta, uint8_t ppr) {
-        // W = omega = angular velocity
-        // w = delta theta / delta t
-        // delta theta = (pulses / ppr) * 2pi
-
-        // delta units in milliseconds, need to convert to seconds
+        // w = (pulses / ppr) * 2pi / dt
         if (delta == 0) {
-            // if deltais 0, don't bother
-            return 0.0f;
+            return 0.0f; // avoid divide-by-zero below
         }
         float sec = MS_TO_S(delta);
         return (count / static_cast<float>(ppr)) * (2 * PI) / sec;

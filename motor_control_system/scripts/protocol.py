@@ -1,8 +1,15 @@
+# AUTO-GENERATED FILE - DO NOT EDIT BY HAND.
+# Run `just generate-protocol` to regenerate from serial_protocol.hpp.
+
+# ruff: noqa
+# isort: skip_file
+# fmt: off
+
 import struct
 from enum import IntEnum
 
 
-class OP:
+class OP(IntEnum):
     QUEUE_MOVE = 1
     QUEUE_ROTATE = 2
     STOP = 3
@@ -20,12 +27,26 @@ class Status(IntEnum):
     TIMEOUT = 3
 
 
-def build_command_packet(seq_id, operation, arg, direction=0):
+QUEUED_OPS = frozenset({OP.QUEUE_MOVE, OP.QUEUE_ROTATE, OP.QUEUE_MOVE_DIST, OP.QUEUE_ROTATE_ANGLE})
+
+CLI_NAMES = {
+    "move": OP.QUEUE_MOVE,
+    "rotate": OP.QUEUE_ROTATE,
+    "stop": OP.STOP,
+    "poll_w": OP.POLL_W,
+    "move_dist": OP.QUEUE_MOVE_DIST,
+    "rotate_angle": OP.QUEUE_ROTATE_ANGLE,
+    "debug_run_n_rotations": OP.DEBUG_RUN_N_ROTATIONS,
+    "debug_set_pwm": OP.DEBUG_SET_PWM,
+}
+
+
+def build_command_packet(seq_id, operation, arg, direction):
     return struct.pack("<BBfb", seq_id, operation, arg, direction)
 
 
 RESPONSE_FORMAT = "<BBffff"
-RESPONSE_SIZE = struct.calcsize(RESPONSE_FORMAT)  # 18
+RESPONSE_SIZE = struct.calcsize(RESPONSE_FORMAT)
 
 
 def parse_response_packet(data):
@@ -33,3 +54,5 @@ def parse_response_packet(data):
         RESPONSE_FORMAT, data[:RESPONSE_SIZE]
     )
     return seq_id, Status(status), w1, w2, v1, v2
+
+# fmt: off

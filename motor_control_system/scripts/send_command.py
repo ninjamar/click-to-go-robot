@@ -16,8 +16,8 @@ import argparse
 import time
 
 import serial
-from protocol import (OP, RESPONSE_SIZE, Status, build_command_packet,
-                      parse_response_packet)
+from protocol import (CLI_NAMES, OP, QUEUED_OPS, RESPONSE_SIZE, Status,
+                      build_command_packet, parse_response_packet)
 
 
 def main():
@@ -26,8 +26,8 @@ def main():
         "-op",
         "--operation",
         required=True,
-        help="Operation: 'move', 'rotate', 'move_dist', 'rotate_angle', 'stop', 'poll_w', "
-        "'debug_run_n_rotations', 'debug_set_pwm'",
+        choices=sorted(CLI_NAMES),
+        help="Operation to send",
     )
     parser.add_argument(
         "arg",
@@ -64,18 +64,7 @@ def main():
     )
 
     args = parser.parse_args()
-
-    OPERATION_MAP = {
-        "move": OP.QUEUE_MOVE,
-        "rotate": OP.QUEUE_ROTATE,
-        "move_dist": OP.QUEUE_MOVE_DIST,
-        "rotate_angle": OP.QUEUE_ROTATE_ANGLE,
-        "stop": OP.STOP,
-        "poll_w": OP.POLL_W,
-        "debug_run_n_rotations": OP.DEBUG_RUN_N_ROTATIONS,
-        "debug_set_pwm": OP.DEBUG_SET_PWM,
-    }
-    operation = OPERATION_MAP[args.operation]
+    operation = CLI_NAMES[args.operation]
 
     conn = serial.Serial(args.port, args.baud, timeout=2)
     time.sleep(2)
@@ -98,7 +87,7 @@ def main():
             f"  w1={w1:.4f} rad/s, w2={w2:.4f} rad/s, v1={v1:.4f} m/s, v2={v2:.4f} m/s"
         )
 
-    if operation not in (OP.STOP, OP.POLL_W, OP.DEBUG_SET_PWM) and resp_status == Status.OK:
+    if operation in QUEUED_OPS and resp_status == Status.OK:
         # Time-based ops know their duration up front (arg is seconds);
         # distance/angle ops don't — the board itself enforces a safety
         # cutoff (MAX_COMMAND_MS in config.hpp), so just wait generously.

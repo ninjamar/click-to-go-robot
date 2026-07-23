@@ -51,7 +51,7 @@ def serial_conn(request):
     conn.close()
 
 
-def _drain(conn, timeout=0.5):
+def _drain(conn, timeout=0.05):
     """Discard any buffered response bytes for up to `timeout` seconds."""
     conn.timeout = timeout
     while conn.read(RESPONSE_SIZE):

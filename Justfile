@@ -24,4 +24,4 @@ lint: compiledb
     clang-tidy -p motor_control_system motor_control_system/src/main.cpp
 
 generate-protocol: compiledb
-    python motor_control_system/scripts/generate_protocol.py
+    python motor_control_system/py/scripts/generate_protocol.py

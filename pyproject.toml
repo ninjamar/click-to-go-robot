@@ -16,3 +16,9 @@ dev = [
     "ruff>=0.15.21",
     "ty>=0.0.59",
 ]
+
+[tool.pytest.ini_options]
+pythonpath = ["motor_control_system/py"]
+
+[tool.pyright]
+extraPaths = ["motor_control_system/py"]

@@ -3,7 +3,7 @@ Generate protocol.py from serial_protocol.hpp via a real libclang parse.
 
 Usage:
     just generate-protocol
-    (or directly: pio run -t compiledb && python scripts/generate_protocol.py)
+    (or directly: pio run -t compiledb && python py/scripts/generate_protocol.py)
 
 Requires motor_control_system/compile_commands.json to already exist (run
 `pio run -t compiledb` first) - this reuses PlatformIO's own compiler
@@ -20,11 +20,12 @@ from pathlib import Path
 import clang.cindex
 
 SCRIPTS_DIR = Path(__file__).parent
-PROJECT_DIR = SCRIPTS_DIR.parent
+PY_DIR = SCRIPTS_DIR.parent
+PROJECT_DIR = PY_DIR.parent
 COMPILE_COMMANDS = PROJECT_DIR / "compile_commands.json"
 MAIN_CPP = "src/main.cpp"
 SERIAL_PROTOCOL_HPP = "lib/serial_protocol/serial_protocol.hpp"
-OUTPUT_FILE = SCRIPTS_DIR / "protocol.py"
+OUTPUT_FILE = PY_DIR / "protocol.py"
 
 TYPE_MAP = {
     "uint8_t": "B",

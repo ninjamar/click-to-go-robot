@@ -2,14 +2,14 @@
 """
 Send a single command packet to the board via serial.
 
-Usage:
-    python send_command.py --operation move 2.0 --port /dev/cu.usbserial-XXXX
-    python send_command.py --op rotate 1.5 --port /dev/cu.usbserial-XXXX --seq-id 42
-    python send_command.py --operation move_dist 0.5 --port /dev/cu.usbserial-XXXX
-    python send_command.py --operation rotate_angle 1.5708 --port /dev/cu.usbserial-XXXX
-    python send_command.py --operation stop 0 --port /dev/cu.usbserial-XXXX
-    python send_command.py --operation debug_run_n_rotations 2.5 --port /dev/cu.usbserial-XXXX
-    python send_command.py --operation debug_set_pwm 80 --direction 1 --port /dev/cu.usbserial-XXXX
+Usage (run from motor_control_system/py/):
+    python -m scripts.send_command --operation move 2.0 --port /dev/cu.usbserial-XXXX
+    python -m scripts.send_command --op rotate 1.5 --port /dev/cu.usbserial-XXXX --seq-id 42
+    python -m scripts.send_command --operation move_dist 0.5 --port /dev/cu.usbserial-XXXX
+    python -m scripts.send_command --operation rotate_angle 1.5708 --port /dev/cu.usbserial-XXXX
+    python -m scripts.send_command --operation stop 0 --port /dev/cu.usbserial-XXXX
+    python -m scripts.send_command --operation debug_run_n_rotations 2.5 --port /dev/cu.usbserial-XXXX
+    python -m scripts.send_command --operation debug_set_pwm 80 --direction 1 --port /dev/cu.usbserial-XXXX
 """
 
 import argparse

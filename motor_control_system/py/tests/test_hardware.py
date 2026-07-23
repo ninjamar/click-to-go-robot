@@ -4,8 +4,8 @@ Hardware integration tests for serial protocol.
 Tests the Arduino firmware by sending command packets and verifying responses.
 
 Usage:
-    pytest scripts/ --port /dev/cu.usbserial-XXXX
-    pytest scripts/ --port COM3 --baud 9600
+    pytest py/tests --port /dev/cu.usbserial-XXXX
+    pytest py/tests --port COM3 --baud 9600
 """
 
 import time

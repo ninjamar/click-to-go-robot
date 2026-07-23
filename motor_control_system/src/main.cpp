@@ -11,7 +11,7 @@ OdometerDriver odometerDriver(ENCODER_MOTORA_CH_A_PIN, ENCODER_MOTORA_CH_B_PIN, 
 SerialProtocol serialProtocol(Serial);
 
 // Command queue state
-CommandPacket queue[QUEUE_SIZE];
+CommandPacket queue[QUEUE_SIZE]; // NOLINT(modernize-avoid-c-arrays)
 // This is a circular buffer: the pop operation would require a shift of each item.
 // So, a circular buffer is used.
 uint8_t queueHead = 0; // index of oldest item
@@ -157,7 +157,8 @@ void loop() {
             if (kind == KIND_SHAFT_ROTATION) {
                 // Raw shaft angle - deliberately skips WHEEL_RADIUS_M/GEAR_RATIO/
                 // TRACK_WIDTH_M, since those are exactly what this op calibrates.
-                accumulatedRad += fabs(w2) * dt;
+                accumulatedRad += fabsf(w2) * dt;
+
                 float targetRad = activeCommand.arg * (2 * PI);
                 remaining = targetRad - accumulatedRad;
                 rampDownAt = RAMP_DOWN_ANGLE_RAD;
@@ -167,12 +168,12 @@ void loop() {
                 float dsB = w2 * dt / GEAR_RATIO * WHEEL_RADIUS_M;
 
                 if (activeCommand.operation == OP_QUEUE_MOVE_DIST) {
-                    accumulatedM += fabs((dsA + dsB) / 2.0f);
+                    accumulatedM += fabsf((dsA + dsB) / 2.0f);
                     remaining = activeCommand.arg - accumulatedM;
                     rampDownAt = RAMP_DOWN_DISTANCE_M;
                     done = accumulatedM >= activeCommand.arg;
                 } else { // OP_QUEUE_ROTATE_ANGLE
-                    accumulatedRad += fabs((dsB - dsA) / TRACK_WIDTH_M);
+                    accumulatedRad += fabsf((dsB - dsA) / TRACK_WIDTH_M);
                     remaining = activeCommand.arg - accumulatedRad;
                     rampDownAt = RAMP_DOWN_ANGLE_RAD;
                     done = accumulatedRad >= activeCommand.arg;
@@ -185,7 +186,7 @@ void loop() {
             }
         } else { // KIND_TIME_MOVE: OP_QUEUE_MOVE or OP_QUEUE_ROTATE
             float totalMs = S_TO_MS(activeCommand.arg);
-            remaining = totalMs - elapsedMs;
+            remaining = totalMs - static_cast<float>(elapsedMs);
             rampDownAt = static_cast<float>(RAMP_DOWN_MS);
             done = elapsedMs >= static_cast<unsigned long>(totalMs);
         }

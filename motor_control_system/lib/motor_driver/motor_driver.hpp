@@ -32,11 +32,11 @@ private:
 
     void applyDirection(int8_t direction, bool opposite) {
         if (direction > 0) {
-            // TODO: MOTOR_A
+            // TODO: Motor A
             // _motors.forwardA();
             opposite ? _motors.backwardB() : _motors.forwardB();
         } else if (direction < 0) {
-            // TODO: MOTOR_A
+            // TODO: Motor A
             // _motors.backwardA();
             opposite ? _motors.forwardB() : _motors.backwardB();
         } else {

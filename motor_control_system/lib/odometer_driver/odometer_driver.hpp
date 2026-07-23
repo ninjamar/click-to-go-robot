@@ -26,18 +26,21 @@ public:
         // isr has to be c function. so we don't give a member function which in c is static.
         // but since this static functio needs to access class, we store a pointer to the current class.
 
-        // TODO: MOTOR_A
+        // TODO: Motor A
         // enableInterrupt(pin1ChA, isrMotor1, CHANGE);
         // enableInterrupt(pin1ChB, isrMotor1, CHANGE);
 
-        // TODO: enable/disable for testing
+        // Motor B only has 1 channel
         enableInterrupt(pin2ChA, isrMotor2, CHANGE);
-        enableInterrupt(pin2ChB, isrMotor2, CHANGE);
+        // enableInterrupt(pin2ChB, isrMotor2, CHANGE);
 
         lastPollTime = millis();
     }
 
-    void poll(float& w1, float& w2) {
+    // dtSec is the real elapsed time this poll covers - callers that need
+    // exact angle (not just rate) recover it as w * dtSec, valid regardless
+    // of how long it's been since the last poll.
+    void poll(float& w1, float& w2, float& dtSec) {
         // w is omega. units in angular velocity
         // ISR increments count. Get a copy of it and find time difference
 
@@ -55,8 +58,9 @@ public:
 
         interrupts();
 
-        w1 = computeW(c1, delta);
-        w2 = computeW(c2, delta);
+        dtSec = MS_TO_S(delta);
+        w1 = computeW(c1, delta, ENCODER_PULSES_PER_REV_A);
+        w2 = computeW(c2, delta, ENCODER_PULSES_PER_REV_B);
     }
 
 private:
@@ -76,7 +80,7 @@ private:
 
     static OdometerDriver* _instance; // static so belongs to class not instance
 
-    static float computeW(unsigned long count, unsigned long delta) {
+    static float computeW(unsigned long count, unsigned long delta, uint8_t ppr) {
         // W = omega = angular velocity
         // w = delta theta / delta t
         // delta theta = (pulses / ppr) * 2pi
@@ -87,16 +91,9 @@ private:
             return 0.0f;
         }
         float sec = MS_TO_S(delta);
-        return (count / static_cast<float>(ENCODER_PULSES_PER_REV)) * (2 * PI) / sec;
+        return (count / static_cast<float>(ppr)) * (2 * PI) / sec;
     }
 
-    // The two readers are two independently-mounted photointerrupters, not a
-    // manufactured quadrature pair - there's no guarantee they sit at a clean
-    // 90 degree phase offset, so a Gray-code/quadrature decode can't reliably
-    // tell direction from the two channels (near-simultaneous A/B edges make
-    // it a timing race). Instead we just tally raw edges from both channels
-    // as a magnitude-only pulse count; direction is supplied by the caller
-    // from the commanded motor direction instead of being derived here.
     void handleMotor1() {
         count1++;
     }

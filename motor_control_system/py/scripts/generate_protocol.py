@@ -157,6 +157,7 @@ def render(op_members, status_members, command_fields, response_fields):
 
     response_format = "<" + "".join(fmt for _, fmt in response_fields)
     response_names = [name for name, _ in response_fields]
+    response_names_literal = ", ".join(f'"{name}"' for name in response_names)
     return_values = ", ".join(
         f"Status({name})" if name == "status" else name for name in response_names
     )
@@ -169,6 +170,7 @@ def render(op_members, status_members, command_fields, response_fields):
 # fmt: off
 
 import struct
+from collections import namedtuple
 from enum import IntEnum
 
 
@@ -194,12 +196,14 @@ def build_command_packet({command_params}):
 RESPONSE_FORMAT = "{response_format}"
 RESPONSE_SIZE = struct.calcsize(RESPONSE_FORMAT)
 
+ResponsePacket = namedtuple("ResponsePacket", [{response_names_literal}])
+
 
 def parse_response_packet(data):
     {", ".join(response_names)} = struct.unpack(
         RESPONSE_FORMAT, data[:RESPONSE_SIZE]
     )
-    return {return_values}
+    return ResponsePacket({return_values})
 
 # fmt: off
 '''

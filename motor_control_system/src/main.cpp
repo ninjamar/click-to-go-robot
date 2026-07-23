@@ -33,8 +33,17 @@ unsigned long lastTickTime = 0;
 float accumulatedM = 0.0f;
 float accumulatedRad = 0.0f;
 
-// Deferred OP_POLL_W request (single slot — a second poll while one is
-// already pending simply overwrites it; last request's seq_id wins).
+// Stall watchdog state - last progress value seen, and when.
+float lastProgressValue = 0.0f;
+unsigned long lastProgressTime = 0;
+
+// Persistent signed (direction) odometry
+float totalDistanceA = 0.0f;
+float totalDistanceB = 0.0f;
+
+// Deferred OP_POLL_W/OP_POLL_DISTANCE request (single slot — a second poll
+// while one is already pending simply overwrites it; last request's seq_id
+// wins).
 bool pollPending = false;
 CommandPacket pollRequest;
 
@@ -81,19 +90,30 @@ uint8_t computeRampedPwm(unsigned long elapsedMs, float remaining, float rampDow
     return static_cast<uint8_t>(pwm);
 }
 
+// All poll calls pass through here. Only accumulates distance if the direction
+// is known (via isActive)
+void pollAndAccumulate(float& w1, float& w2) {
+    float dtSec;
+    odometerDriver.poll(w1, w2, dtSec);
+    if (isActive) {
+        auto sign = static_cast<float>(activeCommand.direction);
+        totalDistanceA += sign * w1 * dtSec * WHEEL_RADIUS_M / GEAR_RATIO;
+        totalDistanceB += sign * w2 * dtSec * WHEEL_RADIUS_M / GEAR_RATIO;
+    }
+}
+
 void sendVelocityResponse(const CommandPacket& pk, ResponseStatus status) {
     float w1;
     float w2;
-    odometerDriver.poll(w1, w2);
-    // The encoder only measures rotation magnitude reliably (see
-    // odometer_driver.hpp) - direction comes from what we commanded, not
-    // from the encoder itself.
-    float sign = isActive ? static_cast<float>(activeCommand.direction) : 0.0f;
+    pollAndAccumulate(w1, w2);
+    // Direction is only known while a command is actively driving; otherwise
+    // report magnitude; see isActive
+    float sign = isActive ? static_cast<float>(activeCommand.direction) : 1.0f;
     w1 *= sign;
     w2 *= sign;
     float v1 = w1 * WHEEL_RADIUS_M / GEAR_RATIO;
     float v2 = w2 * WHEEL_RADIUS_M / GEAR_RATIO;
-    serialProtocol.sendResponse(pk, status, w1, w2, v1, v2);
+    serialProtocol.sendResponse(pk, status, isActive, w1, w2, v1, v2, totalDistanceA, totalDistanceB);
 }
 
 void loop() {
@@ -108,12 +128,18 @@ void loop() {
                 serialProtocol.sendStatus(packet, STATUS_SUCCESS);
                 break;
             case OP_POLL_W:
+            case OP_POLL_DISTANCE:
                 if (!isActive) {
                     sendVelocityResponse(packet, STATUS_SUCCESS);
                 } else {
                     pollPending = true;
                     pollRequest = packet;
                 }
+                break;
+            case OP_RESET_DISTANCE:
+                totalDistanceA = 0.0f;
+                totalDistanceB = 0.0f;
+                serialProtocol.sendStatus(packet, STATUS_SUCCESS);
                 break;
             default:
                 // Queued operations: add them to the queue
@@ -139,6 +165,14 @@ void loop() {
 
         ActiveOpKind kind = classifyOp(activeCommand.operation);
 
+        // Drain+accumulate every active tick regardless of kind - KIND_TIME_MOVE
+        // and KIND_RAW_PWM don't otherwise touch the odometer at all, which
+        // would silently drop their distance once isActive goes false (see
+        // pollAndAccumulate's isActive guard above).
+        float w1;
+        float w2;
+        pollAndAccumulate(w1, w2);
+
         bool done = false;
         ResponseStatus doneStatus = STATUS_SUCCESS;
         float remaining = 0.0f;
@@ -149,9 +183,6 @@ void loop() {
             done = elapsedMs > MAX_COMMAND_MS;
             doneStatus = STATUS_TIMEOUT;
         } else if (kind == KIND_DISTANCE || kind == KIND_SHAFT_ROTATION) {
-            float w1;
-            float w2;
-            odometerDriver.poll(w1, w2);
             float dt = MS_TO_S(CONTROL_TICK_MS);
 
             if (kind == KIND_SHAFT_ROTATION) {
@@ -168,7 +199,14 @@ void loop() {
                 float dsB = w2 * dt / GEAR_RATIO * WHEEL_RADIUS_M;
 
                 if (activeCommand.operation == OP_QUEUE_MOVE_DIST) {
-                    accumulatedM += fabsf((dsA + dsB) / 2.0f);
+                    // divisor = number of channels with real data this tick;
+                    // 0 when neither registered a pulse (e.g. still in
+                    // stiction at the start of ramp-up) - nothing to add.
+                    float divisor = ((dsA != 0.0f) ? 1.0f : 0.0f) + ((dsB != 0.0f) ? 1.0f : 0.0f);
+                    if (divisor > 0.0f) {
+                        accumulatedM += fabsf((dsA + dsB) / divisor);
+                    }
+
                     remaining = activeCommand.arg - accumulatedM;
                     rampDownAt = RAMP_DOWN_DISTANCE_M;
                     done = accumulatedM >= activeCommand.arg;
@@ -180,9 +218,22 @@ void loop() {
                 }
             }
 
-            if (!done && elapsedMs > MAX_COMMAND_MS) {
-                done = true;
-                doneStatus = STATUS_TIMEOUT;
+            if (!done) {
+                if (elapsedMs > MAX_COMMAND_MS) {
+                    done = true;
+                    doneStatus = STATUS_TIMEOUT;
+                } else {
+                    // MOVE_DIST tracks accumulatedM; ROTATE_ANGLE and
+                    // DEBUG_RUN_N_ROTATIONS both track accumulatedRad.
+                    float progress = (activeCommand.operation == OP_QUEUE_MOVE_DIST) ? accumulatedM : accumulatedRad;
+                    if (progress > lastProgressValue) {
+                        lastProgressValue = progress;
+                        lastProgressTime = now;
+                    } else if (now - lastProgressTime > STALL_TIMEOUT_MS) {
+                        done = true;
+                        doneStatus = STATUS_TIMEOUT;
+                    }
+                }
             }
         } else { // KIND_TIME_MOVE: OP_QUEUE_MOVE or OP_QUEUE_ROTATE
             float totalMs = S_TO_MS(activeCommand.arg);
@@ -226,6 +277,8 @@ void loop() {
         lastTickTime = activeStartTime - CONTROL_TICK_MS; // fire the first tick immediately
         accumulatedM = 0.0f;
         accumulatedRad = 0.0f;
+        lastProgressValue = 0.0f;
+        lastProgressTime = activeStartTime;
         isActive = true;
     }
 }

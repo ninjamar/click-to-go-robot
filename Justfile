@@ -9,7 +9,7 @@ format:
 
 
 compiledb:
-    test -f motor_control_system/compile_commands.json || (cd motor_control_system && pio run -t compiledb)
+    @test -f motor_control_system/compile_commands.json || (cd motor_control_system && pio run -t compiledb)
 
 update: _clean compiledb
 
@@ -25,3 +25,11 @@ lint: compiledb
 
 generate-protocol: compiledb
     python motor_control_system/py/scripts/generate_protocol.py
+
+[no-exit-message]
+@mcs-send-command *args:
+    cd motor_control_system/py && python -m scripts.send_command {{args}}
+
+[no-exit-message]
+@mcs-test *args:
+    pytest motor_control_system/py/tests {{args}}

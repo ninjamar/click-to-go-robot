@@ -80,11 +80,14 @@ def main():
             break
         resp_data += chunk
     print(f"DEBUG: received {len(resp_data)} bytes: {resp_data.hex()}")
-    resp_seq_id, resp_status, w1, w2, v1, v2 = parse_response_packet(resp_data)
+    resp_seq_id, resp_status, is_active, w1, w2, v1, v2, d1, d2 = parse_response_packet(
+        resp_data
+    )
     print(f"intake: seq_id={resp_seq_id}, status={resp_status.name}")
-    if operation == OP.POLL_W:
+    if operation in (OP.POLL_W, OP.POLL_DISTANCE):
         print(
-            f"  w1={w1:.4f} rad/s, w2={w2:.4f} rad/s, v1={v1:.4f} m/s, v2={v2:.4f} m/s"
+            f"  is_active={bool(is_active)}, w1={w1:.4f} rad/s, w2={w2:.4f} rad/s, "
+            f"v1={v1:.4f} m/s, v2={v2:.4f} m/s, d1={d1:.4f} m, d2={d2:.4f} m"
         )
 
     if operation in QUEUED_OPS and resp_status == Status.OK:
@@ -102,7 +105,9 @@ def main():
                 break
             resp_data += chunk
         print(f"DEBUG: received {len(resp_data)} bytes: {resp_data.hex()}")
-        resp_seq_id, resp_status, w1, w2, v1, v2 = parse_response_packet(resp_data)
+        resp_seq_id, resp_status, _, w1, w2, v1, v2, _, _ = parse_response_packet(
+            resp_data
+        )
         print(f"completion: seq_id={resp_seq_id}, status={resp_status.name}")
 
     conn.close()

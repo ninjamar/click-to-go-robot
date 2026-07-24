@@ -106,9 +106,8 @@ def test_poll_w_while_moving(serial_conn, move_seq_id, poll_seq_id, direction):
     assert resp.seq_id == poll_seq_id
     assert resp.status == Status.SUCCESS
     assert resp.is_active
-    # TODO: Motor A - motor 1's encoder is disabled, uncomment once re-enabled
-    # assert (resp.w1 > 0) == (direction > 0)
-    # assert (resp.v1 > 0) == (direction > 0)
+    assert (resp.w1 > 0) == (direction > 0)
+    assert (resp.v1 > 0) == (direction > 0)
     assert (resp.w2 > 0) == (direction > 0)
     assert (resp.v2 > 0) == (direction > 0)
 
@@ -130,6 +129,9 @@ def test_debug_set_pwm(serial_conn):
     assert resp.seq_id == 41
     assert resp.status == Status.SUCCESS
     assert resp.is_active
+
+    assert resp.w1 > 0
+    assert resp.v1 > 0
     assert resp.w2 > 0
     assert resp.v2 > 0
 
@@ -165,7 +167,7 @@ def test_debug_run_n_rotations(serial_conn, seq_id, rotations, direction):
 def test_reset_and_poll_distance(serial_conn):
     """Test: RESET_DISTANCE zeroes the persistent odometer, POLL_DISTANCE
     then reports nonzero cumulative distance for wheel B after a move."""
-    resp = call(serial_conn, OP.RESET_DISTANCE, seq_id=60)
+    resp = call(serial_conn, OP.RESET_DIST, seq_id=60)
     assert resp.seq_id == 60
     assert resp.status == Status.SUCCESS
 
@@ -177,7 +179,7 @@ def test_reset_and_poll_distance(serial_conn):
     assert resp.seq_id == 61
     assert resp.status == Status.SUCCESS
 
-    resp = call(serial_conn, OP.POLL_DISTANCE, seq_id=62)
+    resp = call(serial_conn, OP.POLL_DIST, seq_id=62)
     assert resp.seq_id == 62
     assert resp.status == Status.SUCCESS
     assert resp.d2 > 0
@@ -186,7 +188,7 @@ def test_reset_and_poll_distance(serial_conn):
 @pytest.mark.parametrize("direction", [1, -1])
 def test_move_dist_matches_polled_distance(serial_conn, direction):
     """Test: a known 1m MOVE_DIST is reflected (signed) in OP_POLL_DISTANCE afterward."""
-    resp = call(serial_conn, OP.RESET_DISTANCE, seq_id=80)
+    resp = call(serial_conn, OP.RESET_DIST, seq_id=80)
     assert resp.status == Status.SUCCESS
 
     resp = call(
@@ -197,10 +199,10 @@ def test_move_dist_matches_polled_distance(serial_conn, direction):
     resp = read_response(serial_conn, timeout=MAX_COMMAND_S + READ_MARGIN_S)
     assert resp.status == Status.SUCCESS
 
-    resp = call(serial_conn, OP.POLL_DISTANCE, seq_id=82)
+    resp = call(serial_conn, OP.POLL_DIST, seq_id=82)
     assert resp.status == Status.SUCCESS
     # Generous tolerance for real calibration/overshoot noise - just rules out "way off".
-    assert direction * resp.d2 == pytest.approx(1.0, abs=0.15)
+    assert direction * resp.x2 == pytest.approx(1.0, abs=0.15)
 
 
 def test_stop_interrupts_active_move(serial_conn):
@@ -225,8 +227,8 @@ def test_stop_interrupts_active_move(serial_conn):
 
 
 def test_direction_reversal_nets_out(serial_conn):
-    """Test: forward then backward for the same duration nets d2 back close to zero."""
-    resp = call(serial_conn, OP.RESET_DISTANCE, seq_id=90)
+    """Test: forward then backward for the same duration nets x2 back close to zero."""
+    resp = call(serial_conn, OP.RESET_DIST, seq_id=90)
     assert resp.status == Status.SUCCESS
 
     resp = call(serial_conn, OP.QUEUE_MOVE, seq_id=91, duration=0.3, direction=1)
@@ -239,9 +241,9 @@ def test_direction_reversal_nets_out(serial_conn):
     resp = read_response(serial_conn, timeout=5)
     assert resp.status == Status.SUCCESS
 
-    resp = call(serial_conn, OP.POLL_DISTANCE, seq_id=93)
+    resp = call(serial_conn, OP.POLL_DIST, seq_id=93)
     assert resp.status == Status.SUCCESS
-    assert resp.d2 == pytest.approx(0.0, abs=0.1)
+    assert resp.x2 == pytest.approx(0.0, abs=0.1)
 
 
 def test_move_dist_stalls_when_not_progressing(serial_conn):

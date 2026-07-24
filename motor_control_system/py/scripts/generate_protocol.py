@@ -97,7 +97,7 @@ def is_queued(op_name):
 def cli_name(op_name):
     """CLI-friendly spelling for an op: drop the QUEUE_ prefix, lowercase
     the rest (OP_QUEUE_MOVE_DIST -> move_dist, OP_DEBUG_SET_PWM -> debug_set_pwm)."""
-    return op_name.replace("QUEUE_", "", 1).lower()
+    return op_name.replace("QUEUE_", "", 1).lower()  # todo: make lower case keep queue
 
 
 def extract_enum(cursor, prefix):

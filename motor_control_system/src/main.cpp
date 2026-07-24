@@ -33,8 +33,11 @@ float lastProgressValue = 0.0f;
 unsigned long lastProgressTime = 0;
 
 // Persistent signed (direction) odometry
-float totalDistanceA = 0.0f;
-float totalDistanceB = 0.0f;
+float linearDisplacementA = 0.0f;
+float linearDisplacementB = 0.0f;
+
+float linearDistanceA = 0.0f; // magnitude
+float linearDistanceB = 0.0f;
 
 // Deferred OP_POLL_W/OP_POLL_DISTANCE request; single slot, most recent
 // overwrites
@@ -84,10 +87,17 @@ uint8_t computeRampedPwm(unsigned long elapsedMs, float remaining, float rampDow
 void pollAndAccumulate(float& w1, float& w2) {
     float dtSec;
     odometerDriver.poll(w1, w2, dtSec);
+
+    float x1 = w1 * dtSec * WHEEL_RADIUS_M / GEAR_RATIO;
+    float x2 = w2 * dtSec * WHEEL_RADIUS_M / GEAR_RATIO;
+    linearDistanceA += x1;
+    linearDistanceB += x2;
+
     if (isActive) {
         auto sign = static_cast<float>(activeCommand.direction);
-        totalDistanceA += sign * w1 * dtSec * WHEEL_RADIUS_M / GEAR_RATIO;
-        totalDistanceB += sign * w2 * dtSec * WHEEL_RADIUS_M / GEAR_RATIO;
+
+        linearDisplacementA += sign * x1;
+        linearDisplacementB += sign * x2;
     }
 }
 
@@ -102,7 +112,7 @@ void sendVelocityResponse(const CommandPacket& pk, ResponseStatus status) {
     w2 *= sign;
     float v1 = w1 * WHEEL_RADIUS_M / GEAR_RATIO;
     float v2 = w2 * WHEEL_RADIUS_M / GEAR_RATIO;
-    serialProtocol.sendResponse(pk, status, isActive, w1, w2, v1, v2, totalDistanceA, totalDistanceB);
+    serialProtocol.sendResponse(pk, status, isActive, w1, w2, v1, v2, linearDistanceA, linearDistanceB, linearDisplacementA, linearDisplacementB);
 }
 
 void loop() {
@@ -117,7 +127,7 @@ void loop() {
                 serialProtocol.sendStatus(packet, STATUS_SUCCESS);
                 break;
             case OP_POLL_W:
-            case OP_POLL_DISTANCE:
+            case OP_POLL_DIST:
                 if (!isActive) {
                     sendVelocityResponse(packet, STATUS_SUCCESS);
                 } else {
@@ -125,9 +135,12 @@ void loop() {
                     pollRequest = packet;
                 }
                 break;
-            case OP_RESET_DISTANCE:
-                totalDistanceA = 0.0f;
-                totalDistanceB = 0.0f;
+            case OP_RESET_DIST:
+                linearDisplacementA = 0.0f;
+                linearDisplacementB = 0.0f;
+                linearDistanceA = 0.0f;
+                linearDistanceB = 0.0f;
+
                 serialProtocol.sendStatus(packet, STATUS_SUCCESS);
                 break;
             default:
@@ -221,7 +234,7 @@ void loop() {
         } else { // KIND_TIME_MOVE: OP_QUEUE_MOVE or OP_QUEUE_ROTATE
             float totalMs = S_TO_MS(activeCommand.arg);
             remaining = totalMs - static_cast<float>(elapsedMs);
-            rampDownAt = static_cast<float>(RAMP_DOWN_MS);
+            rampDownAt = RAMP_DOWN_MS;
             done = elapsedMs >= static_cast<unsigned long>(totalMs);
         }
 
@@ -230,7 +243,7 @@ void loop() {
             serialProtocol.sendStatus(activeCommand, doneStatus);
             isActive = false;
         } else if (kind == KIND_RAW_PWM) {
-            auto pwm = static_cast<uint8_t>(constrain(activeCommand.arg, 0.0f, static_cast<float>(MAX_PWM)));
+            auto pwm = static_cast<uint8_t>(constrain(activeCommand.arg, 0.0f, MAX_PWM));
             motorDriver.driveMove(activeCommand.direction, pwm);
         } else {
             uint8_t pwm = computeRampedPwm(elapsedMs, max(remaining, 0.0f), rampDownAt);

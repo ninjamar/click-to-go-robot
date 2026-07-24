@@ -2,6 +2,7 @@
 
 #include <Arduino.h>
 
+// WARNING: If you modify this code, re-generate the protocol
 // SI units
 enum CommandOperation {
     // arg: duration(s)
@@ -18,8 +19,8 @@ enum CommandOperation {
     OP_DEBUG_RUN_N_ROTATIONS = 7,
     OP_DEBUG_SET_PWM = 8,
     // arg: none
-    OP_RESET_DISTANCE = 9,
-    OP_POLL_DISTANCE = 10
+    OP_RESET_DIST = 9,
+    OP_POLL_DIST = 10
 };
 
 enum ResponseStatus {
@@ -45,8 +46,10 @@ struct ResponsePacket {
     float w2; // angular velocity of motor B's raw output shaft, rad/s
     float v1; // linear velocity of wheel A, m/s
     float v2; // linear velocity of wheel B, m/s
-    float d1; // cumulative signed linear distance of wheel A since last OP_RESET_DISTANCE, m
-    float d2; // cumulative signed linear distance of wheel B since last OP_RESET_DISTANCE, m
+    float d1; // linear distance of wheel A, m
+    float d2; // linear distance of wheel B, m
+    float x1; // signed linear displacement of wheel A, m
+    float x2; // signed linear displacement of wheel B, m
     // uint8_t checksum;
 } __attribute__((packed));
 
@@ -72,18 +75,18 @@ public:
         return true;
     }
 
-    void sendResponse(const CommandPacket& pk, ResponseStatus status, bool isActive, float w1, float w2, float v1, float v2, float d1, float d2) {
-        sendResponsePacket(buildResponse(pk, status, isActive, w1, w2, v1, v2, d1, d2));
+    void sendResponse(const CommandPacket& pk, ResponseStatus status, bool isActive, float w1, float w2, float v1, float v2, float d1, float d2, float x1, float x2) {
+        sendResponsePacket(buildResponse(pk, status, isActive, w1, w2, v1, v2, d1, d2, x1, x2));
     }
 
     void sendStatus(const CommandPacket& pk, ResponseStatus status) {
-        sendResponse(pk, status, false, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f);
+        sendResponse(pk, status, false, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f);
     }
 
 private:
     Stream& _serial;
 
-    ResponsePacket buildResponse(const CommandPacket& in, uint8_t status, bool isActive, float w1, float w2, float v1, float v2, float d1, float d2) {
+    ResponsePacket buildResponse(const CommandPacket& in, uint8_t status, bool isActive, float w1, float w2, float v1, float v2, float d1, float d2, float x1, float x2) {
         ResponsePacket resp;
         resp.seq_id = in.seq_id;
         resp.status = status;
@@ -94,6 +97,8 @@ private:
         resp.v2 = v2;
         resp.d1 = d1;
         resp.d2 = d2;
+        resp.x1 = x1;
+        resp.x2 = x2;
         return resp;
     }
 

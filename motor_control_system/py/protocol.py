@@ -19,8 +19,8 @@ class OP(IntEnum):
     QUEUE_ROTATE_ANGLE = 6
     DEBUG_RUN_N_ROTATIONS = 7
     DEBUG_SET_PWM = 8
-    RESET_DISTANCE = 9
-    POLL_DISTANCE = 10
+    RESET_DIST = 9
+    POLL_DIST = 10
 
 
 class Status(IntEnum):
@@ -41,8 +41,8 @@ CLI_NAMES = {
     "rotate_angle": OP.QUEUE_ROTATE_ANGLE,
     "debug_run_n_rotations": OP.DEBUG_RUN_N_ROTATIONS,
     "debug_set_pwm": OP.DEBUG_SET_PWM,
-    "reset_distance": OP.RESET_DISTANCE,
-    "poll_distance": OP.POLL_DISTANCE,
+    "reset_dist": OP.RESET_DIST,
+    "poll_dist": OP.POLL_DIST,
 }
 
 
@@ -50,16 +50,16 @@ def build_command_packet(seq_id, operation, arg, direction):
     return struct.pack("<BBfb", seq_id, operation, arg, direction)
 
 
-RESPONSE_FORMAT = "<BBBffffff"
+RESPONSE_FORMAT = "<BBBffffffff"
 RESPONSE_SIZE = struct.calcsize(RESPONSE_FORMAT)
 
-ResponsePacket = namedtuple("ResponsePacket", ["seq_id", "status", "is_active", "w1", "w2", "v1", "v2", "d1", "d2"])
+ResponsePacket = namedtuple("ResponsePacket", ["seq_id", "status", "is_active", "w1", "w2", "v1", "v2", "d1", "d2", "x1", "x2"])
 
 
 def parse_response_packet(data):
-    seq_id, status, is_active, w1, w2, v1, v2, d1, d2 = struct.unpack(
+    seq_id, status, is_active, w1, w2, v1, v2, d1, d2, x1, x2 = struct.unpack(
         RESPONSE_FORMAT, data[:RESPONSE_SIZE]
     )
-    return ResponsePacket(seq_id, Status(status), is_active, w1, w2, v1, v2, d1, d2)
+    return ResponsePacket(seq_id, Status(status), is_active, w1, w2, v1, v2, d1, d2, x1, x2)
 
 # fmt: on

@@ -9,26 +9,26 @@ const uint8_t QUEUE_SIZE = 4;
 const unsigned long BAUD_RATE = 57600;
 
 // Motor direction pins (L298N IN1/IN2, dual motor)
-const int MOTOR_A_IN1_PIN = 5; // TODO: Motor A
-const int MOTOR_A_IN2_PIN = 6; // TODO: Motor A
+const int MOTOR_A_IN1_PIN = 6;
+const int MOTOR_A_IN2_PIN = 5;
 
 const int MOTOR_B_IN1_PIN = 3;
 const int MOTOR_B_IN2_PIN = 4;
 
 // Motor enable/speed pins: L298N ENA/ENB. Use Nano PWM pin. Don't use jumper
 // between them
-const int MOTOR_A_EN_PIN = 11;
+const int MOTOR_A_EN_PIN = 10;
 const int MOTOR_B_EN_PIN = 9;
 
 // Odometer / encoder pins for channel
-const int ENCODER_MOTORA_CH_A_PIN = 7; // TODO: Motor A
-const int ENCODER_MOTORA_CH_B_PIN = 8; // TODO: Motor A
+const int ENCODER_MOTORA_CH_A_PIN = 7;
+const int ENCODER_MOTORA_CH_B_PIN = 8;
 
-const int ENCODER_MOTORB_CH_A_PIN = 10;
+const int ENCODER_MOTORB_CH_A_PIN = 11;
 const int ENCODER_MOTORB_CH_B_PIN = 12;
 
 // PPR = blades (12) * 2 edges(hi/lo) / blade * # of active channels.
-const uint8_t ENCODER_PULSES_PER_REV_A = 48; // TODO: Motor A
+const uint8_t ENCODER_PULSES_PER_REV_A = 48;
 const uint8_t ENCODER_PULSES_PER_REV_B = 24; // Motor B; only CH_A is physically connected
 
 // Geometry — convert encoder pulses into wheel/chassis displacement.

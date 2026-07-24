@@ -17,10 +17,11 @@ public:
         _motors.setSpeed(pwm);
     }
 
-    // Sets the two motors to opposite directions (in-place rotation).
+    // TODO: Figure out rotate
     void driveRotate(int8_t direction, uint8_t pwm) {
-        applyDirection(direction, /*opposite=*/true);
-        _motors.setSpeed(pwm);
+        // applyDirection(direction, /*opposite=*/true);
+        // _motors.setSpeed(pwm);
+        _motors.stop();
     }
 
     void stop() {
@@ -32,12 +33,10 @@ private:
 
     void applyDirection(int8_t direction, bool opposite) {
         if (direction > 0) {
-            // TODO: Motor A
-            // _motors.forwardA();
+            _motors.forwardA();
             opposite ? _motors.backwardB() : _motors.forwardB();
         } else if (direction < 0) {
-            // TODO: Motor A
-            // _motors.backwardA();
+            _motors.backwardA();
             opposite ? _motors.forwardB() : _motors.backwardB();
         } else {
             _motors.stop();

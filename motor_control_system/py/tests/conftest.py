@@ -6,6 +6,14 @@ import pytest
 import serial
 from protocol import OP, RESPONSE_SIZE, build_command_packet
 
+# From config.hpp: a queued command can go this long with no odometer
+# progress before the firmware force-completes it on its own (STALL_TIMEOUT_MS),
+# even after we've already sent STOP. reset_board's post-STOP read must wait at
+# least this long, or a stray completion for the *previous* test's command can
+# still land after we've decided the buffer is clean and desync the next test.
+STALL_TIMEOUT_S = 3
+STRAY_RESPONSE_TIMEOUT_S = STALL_TIMEOUT_S + 2
+
 
 def pytest_addoption(parser):
     """Add --port and --baud options to pytest CLI."""
@@ -46,7 +54,7 @@ def serial_conn(request):
     conn.close()
 
 
-def _drain(conn, timeout=0.05):
+def _drain(conn, timeout=0.2):
     """Discard any buffered response bytes for up to `timeout` seconds."""
     conn.timeout = timeout
     while conn.read(RESPONSE_SIZE):
@@ -57,7 +65,7 @@ def _drain(conn, timeout=0.05):
 def reset_board(serial_conn):
     """Stop the motor and drain stray bytes so a leftover response can't desync the next test."""
     serial_conn.write(build_command_packet(0, OP.STOP, 0, 0))
-    serial_conn.timeout = 2
+    serial_conn.timeout = STRAY_RESPONSE_TIMEOUT_S
     serial_conn.read(RESPONSE_SIZE)
     _drain(serial_conn)
     serial_conn.timeout = 2
@@ -65,7 +73,7 @@ def reset_board(serial_conn):
     yield
 
     serial_conn.write(build_command_packet(0, OP.STOP, 0, 0))
-    serial_conn.timeout = 2
+    serial_conn.timeout = STRAY_RESPONSE_TIMEOUT_S
     serial_conn.read(RESPONSE_SIZE)
     _drain(serial_conn)
     serial_conn.timeout = 2

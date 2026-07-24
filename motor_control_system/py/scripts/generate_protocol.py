@@ -23,6 +23,7 @@ OUTPUT_FILE = PY_DIR / "protocol.py"
 TYPE_MAP = {
     "uint8_t": "B",
     "int8_t": "b",
+    "uint16_t": "H",
     "float": "f",
 }
 
@@ -129,6 +130,14 @@ def extract_struct_fields(cursor):
     return fields
 
 
+def split_off_checksum(fields, struct_name):
+    """Both packets end with a CRC-16/MODBUS checksum field, computed/verified
+    rather than supplied by callers - split it off from the payload fields."""
+    if fields[-1] != ("checksum", "H"):
+        raise SystemExit(f"{struct_name} must end with a uint16_t checksum field")
+    return fields[:-1]
+
+
 def render(op_members, status_members, command_fields, response_fields):
     op_lines = "\n".join(f"    {name} = {value}" for name, value in op_members)
     status_lines = "\n".join(f"    {name} = {value}" for name, value in status_members)
@@ -138,11 +147,14 @@ def render(op_members, status_members, command_fields, response_fields):
         f'    "{cli_name(name)}": OP.{name},' for name, _ in op_members
     )
 
-    command_format = "<" + "".join(fmt for _, fmt in command_fields)
-    command_params = ", ".join(name for name, _ in command_fields)
+    command_payload_fields = split_off_checksum(command_fields, "CommandPacket")
+    command_payload_format = "<" + "".join(fmt for _, fmt in command_payload_fields)
+    command_params = ", ".join(name for name, _ in command_payload_fields)
 
-    response_format = "<" + "".join(fmt for _, fmt in response_fields)
-    response_names = [name for name, _ in response_fields]
+    response_payload_fields = split_off_checksum(response_fields, "ResponsePacket")
+    response_payload_format = "<" + "".join(fmt for _, fmt in response_payload_fields)
+    response_format = response_payload_format + "H"
+    response_names = [name for name, _ in response_payload_fields]
     response_names_literal = ", ".join(f'"{name}"' for name in response_names)
     return_values = ", ".join(
         f"Status({name})" if name == "status" else name for name in response_names
@@ -159,6 +171,7 @@ import struct
 from collections import namedtuple
 from enum import IntEnum
 
+from fastcrc import crc16
 
 class OP(IntEnum):
 {op_lines}
@@ -176,9 +189,12 @@ CLI_NAMES = {{
 
 
 def build_command_packet({command_params}):
-    return struct.pack("{command_format}", {command_params})
+    payload = struct.pack("{command_payload_format}", {command_params})
+    checksum = crc16.modbus(payload)
+    return payload + struct.pack("<H", checksum)
 
 
+RESPONSE_PAYLOAD_SIZE = struct.calcsize("{response_payload_format}")
 RESPONSE_FORMAT = "{response_format}"
 RESPONSE_SIZE = struct.calcsize(RESPONSE_FORMAT)
 
@@ -186,9 +202,12 @@ ResponsePacket = namedtuple("ResponsePacket", [{response_names_literal}])
 
 
 def parse_response_packet(data):
-    {", ".join(response_names)} = struct.unpack(
-        RESPONSE_FORMAT, data[:RESPONSE_SIZE]
+    data = data[:RESPONSE_SIZE]
+    {", ".join(response_names)}, checksum = struct.unpack(
+        RESPONSE_FORMAT, data
     )
+    if crc16.modbus(data[:RESPONSE_PAYLOAD_SIZE]) != checksum:
+        raise ValueError(f"checksum mismatch in response {{data!r}}")
     return ResponsePacket({return_values})
 
 # fmt: on

@@ -32,7 +32,7 @@ const uint8_t ENCODER_PULSES_PER_REV_A = 48;
 const uint8_t ENCODER_PULSES_PER_REV_B = 24; // Motor B; only CH_A is physically connected
 
 // Geometry — convert encoder pulses into wheel/chassis displacement.
-const float WHEEL_RADIUS_M = 0.041f;
+const float WHEEL_RADIUS_M = 0.04;
 const float GEAR_RATIO = 64.0f; // Encoder shaft turned ~64 times for 1 wheel rotation
 const float TRACK_WIDTH_M = 0.15f; // TODO
 

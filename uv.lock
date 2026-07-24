@@ -12,6 +12,38 @@ wheels = [
 ]
 
 [[package]]
+name = "fastcrc"
+version = "0.3.6"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/69/4b/ac4823a77fe7fe1b91f65546bc7e4a2d54ca98c75c25ad20be5f77cc3fac/fastcrc-0.3.6.tar.gz", hash = "sha256:58eb2409d37f47edd962d1a8df55fd018dd553e0830e7c016b92f4ecafb825fe", size = 11876, upload-time = "2026-05-06T06:40:21.242Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/54/32/8c15403edd6d51b457b37ee10dd7e0bc67013903e5504db1a6ec18714c91/fastcrc-0.3.6-cp314-cp314-macosx_10_12_x86_64.whl", hash = "sha256:30fdeed6327bf501cf8c42f690683bfb86f426cfbefe02eea37857364eb1b3f1", size = 251909, upload-time = "2026-05-06T06:39:03.713Z" },
+    { url = "https://files.pythonhosted.org/packages/21/8c/65078e0b3dce7337a2bc8dc8e6f170d91f978236a099e84b0a4a90123783/fastcrc-0.3.6-cp314-cp314-macosx_11_0_arm64.whl", hash = "sha256:a51b4d77f4eee5802f559521c8dee04813435a53aa30ebf0f6dd534281784a8e", size = 250534, upload-time = "2026-05-06T06:38:58.664Z" },
+    { url = "https://files.pythonhosted.org/packages/ac/98/c94da227618ad3a8d18a4d4c57f097a05672a83d2d768a01881d83dd44eb/fastcrc-0.3.6-cp314-cp314-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:9f6d29b24ad19f5734a0a84dd5ea1238641ce976f15218f996e6ed96202879d4", size = 281738, upload-time = "2026-05-06T06:37:10.715Z" },
+    { url = "https://files.pythonhosted.org/packages/70/5f/eb9305327055d62d9a0e8f9a6e5b3ba9db0d153af695a806726f56c5d895/fastcrc-0.3.6-cp314-cp314-manylinux_2_17_armv7l.manylinux2014_armv7l.whl", hash = "sha256:ac3683665fb3a27371908fe4b56f09babb63df638fee95fa057e8a1a2bb14922", size = 287910, upload-time = "2026-05-06T06:37:27.587Z" },
+    { url = "https://files.pythonhosted.org/packages/75/34/3e775f4b346f2333800aaa00f1fac25b86bceb806b5590a31eac43b55abf/fastcrc-0.3.6-cp314-cp314-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl", hash = "sha256:04f5d74447cad11b01597ae59d53089e3631ff7600c0934131958d85a849d095", size = 392527, upload-time = "2026-05-06T06:37:45.935Z" },
+    { url = "https://files.pythonhosted.org/packages/cc/69/49f76905a56b80b08890ed8469bd67a3e9895bdc7bdd3894a11c023c9a56/fastcrc-0.3.6-cp314-cp314-manylinux_2_17_s390x.manylinux2014_s390x.whl", hash = "sha256:d64bd7f422405d4d59a771ef26c32beb136948846460048ec89972de9e2d9efd", size = 303317, upload-time = "2026-05-06T06:38:23.156Z" },
+    { url = "https://files.pythonhosted.org/packages/36/40/24e0af95dc721ea667f680c3f818524a5959dcf7d4181102cd905e4db8b7/fastcrc-0.3.6-cp314-cp314-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:a71bc52c24cd61178c8c622f7863cef66e0b7bb4338a1ce826cee0e73b989e4a", size = 282987, upload-time = "2026-05-06T06:38:49.117Z" },
+    { url = "https://files.pythonhosted.org/packages/92/0b/6b34b8c17007f208a50845a00683c63c46e3d14868d9be114cdf2e850a8d/fastcrc-0.3.6-cp314-cp314-manylinux_2_31_riscv64.whl", hash = "sha256:d61cdc983d6879d4953e71067c646603a4e5863e15418c82c15f5dce5f54d98c", size = 286778, upload-time = "2026-05-06T06:38:05.752Z" },
+    { url = "https://files.pythonhosted.org/packages/58/3f/e127a93f59dcb7f720475d508c081ae4e8a1d1c55c59a18c18cf068b1882/fastcrc-0.3.6-cp314-cp314-manylinux_2_5_i686.manylinux1_i686.whl", hash = "sha256:2d0e9885d78dcf9e7a055c77c8806bbe07623090a0d49914b65f16e955c6726a", size = 298430, upload-time = "2026-05-06T06:38:39.35Z" },
+    { url = "https://files.pythonhosted.org/packages/9c/0d/e630a36072e8c8ecc4e01df178cab13520593d5b2ef43ce371613173e2ba/fastcrc-0.3.6-cp314-cp314-musllinux_1_2_aarch64.whl", hash = "sha256:6c2dfcb88cf3a5df1f8f7575035ef3d32a5458e8f3a19ffa3df6b8d9a720c171", size = 457691, upload-time = "2026-05-06T06:39:11.647Z" },
+    { url = "https://files.pythonhosted.org/packages/3e/6a/f9d65cd0870b2889b7b1f91ba5e09342156a60d09b2561c6c0d5c0a70466/fastcrc-0.3.6-cp314-cp314-musllinux_1_2_armv7l.whl", hash = "sha256:2ff6e8490c217324a52daa622aad6c4040cc575efbee5f54042c5df8d5d9f158", size = 562800, upload-time = "2026-05-06T06:39:31.379Z" },
+    { url = "https://files.pythonhosted.org/packages/ce/66/4521beac9b75abc8cd1f8198363951ad991663a402fd21e4e3dd5befc248/fastcrc-0.3.6-cp314-cp314-musllinux_1_2_i686.whl", hash = "sha256:95ff420a55596f3fab07aa1ea5ca91b6af2d6642c709a37edf7ae0afe8500d10", size = 518324, upload-time = "2026-05-06T06:39:49.634Z" },
+    { url = "https://files.pythonhosted.org/packages/06/c0/f8fe0833dac9f3943959c68d38076d5cc0588b60c915b8d6670f96b06e00/fastcrc-0.3.6-cp314-cp314-musllinux_1_2_x86_64.whl", hash = "sha256:efcebad6d4bde2039434e43e145bc2c3fd6cde99c77548ff0af593eda3753f5a", size = 487637, upload-time = "2026-05-06T06:40:09.286Z" },
+    { url = "https://files.pythonhosted.org/packages/e0/c8/a1ac74b3b242d166f376007b72b5a7405914eda1bf10275f6d1ce4c35a08/fastcrc-0.3.6-cp314-cp314-win32.whl", hash = "sha256:0f3e6241db9de01a69c966302a57b53eee4bbfd943faed1f6dbfce5434af0b44", size = 141588, upload-time = "2026-05-06T06:40:28.881Z" },
+    { url = "https://files.pythonhosted.org/packages/92/21/810b272aa71ad0b01ad8327aa6213af544eb828c4f3be44087cd519e5a90/fastcrc-0.3.6-cp314-cp314-win_amd64.whl", hash = "sha256:d2cb41840752165431cb0f35e15ecabcfd564e0100ce0abe1380eb4f8a813f84", size = 149546, upload-time = "2026-05-06T06:40:27.707Z" },
+    { url = "https://files.pythonhosted.org/packages/f3/8f/d5e223a39daca4024a02e50cfe1c40b73e35e5b5d313441951cd39eacb62/fastcrc-0.3.6-cp314-cp314t-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:d5632c4c3daaf2f06aa6240d7f5966fec12d69d12f57cb363e4f530ddbcbc25e", size = 281518, upload-time = "2026-05-06T06:37:12.179Z" },
+    { url = "https://files.pythonhosted.org/packages/41/d0/75a916e402cb176f85bbab0a33b2f29b771ae04b6b817d5bb52dd2099169/fastcrc-0.3.6-cp314-cp314t-manylinux_2_17_armv7l.manylinux2014_armv7l.whl", hash = "sha256:4f601e2f5bf72faffca061813371fb65c4002101864baf1e345282cf0f246d23", size = 287587, upload-time = "2026-05-06T06:37:28.995Z" },
+    { url = "https://files.pythonhosted.org/packages/1f/82/50f97bf6d686004b37cc745999f9a668c64b1274e093f9fa8e7ae030fc9a/fastcrc-0.3.6-cp314-cp314t-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl", hash = "sha256:f6e74f472e48f29b4ccbace734bffa5ce567fef4cde14983bcad46afeef2e434", size = 395966, upload-time = "2026-05-06T06:37:47.667Z" },
+    { url = "https://files.pythonhosted.org/packages/02/e4/f1cb7976caef0f12e5773aee694861bd132926080010ddcc8c8156e6f1c6/fastcrc-0.3.6-cp314-cp314t-manylinux_2_17_s390x.manylinux2014_s390x.whl", hash = "sha256:4822072117080f0673728882b1c73d282380ddf727e3ad9d4981a868a0d289f5", size = 303244, upload-time = "2026-05-06T06:38:24.464Z" },
+    { url = "https://files.pythonhosted.org/packages/9b/c9/31170cd6025ab2f0ca48daa41f224c29bb1303a2bcdad128c69085d85338/fastcrc-0.3.6-cp314-cp314t-manylinux_2_31_riscv64.whl", hash = "sha256:b7245e09a0910287083ee40c09dcaff0bc4745573b85ea03d3bb922dace903a3", size = 286447, upload-time = "2026-05-06T06:38:06.924Z" },
+    { url = "https://files.pythonhosted.org/packages/f0/e4/b008161ace86beb90450b6ee3581f10addb911232d87ced33e1e7d790408/fastcrc-0.3.6-cp314-cp314t-musllinux_1_2_aarch64.whl", hash = "sha256:4641228c3ce8bb915ae7f1b6e82dc282a6506d3b50bd5b9af9642a2511c8fbfa", size = 457527, upload-time = "2026-05-06T06:39:12.993Z" },
+    { url = "https://files.pythonhosted.org/packages/82/09/eb32e7f83354ed75f0236449294901fc13e45091b2363d7d8b22d5041217/fastcrc-0.3.6-cp314-cp314t-musllinux_1_2_armv7l.whl", hash = "sha256:c4f0bcfa5b19307b2282d650ec5ab69f525632485c2be3d73b6f241e418c39b5", size = 562536, upload-time = "2026-05-06T06:39:32.757Z" },
+    { url = "https://files.pythonhosted.org/packages/71/2b/58be21f3898181f965cc83aebdee374a3bafcebfd9c959642618e89d203c/fastcrc-0.3.6-cp314-cp314t-musllinux_1_2_i686.whl", hash = "sha256:c5d61a03733f67f46d16c997fd25935809993d5718c0e19e815d5fedc6b1bca1", size = 518167, upload-time = "2026-05-06T06:39:51.352Z" },
+    { url = "https://files.pythonhosted.org/packages/ef/07/64b64020bb0346c190c7ae9c381fb5a0f9b6bda2d4a7d8d65d739c118439/fastcrc-0.3.6-cp314-cp314t-musllinux_1_2_x86_64.whl", hash = "sha256:a663bad3ec57fce7ad0ffa4596e174247c59f20d02a105b630948baed149d387", size = 487656, upload-time = "2026-05-06T06:40:10.609Z" },
+]
+
+[[package]]
 name = "iniconfig"
 version = "2.3.0"
 source = { registry = "https://pypi.org/simple" }
@@ -51,6 +83,7 @@ name = "motor-control-system"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
+    { name = "fastcrc" },
     { name = "libclang" },
     { name = "pyserial" },
 ]
@@ -65,6 +98,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "fastcrc", specifier = ">=0.3.6" },
     { name = "libclang", specifier = ">=18.1.1" },
     { name = "pyserial", specifier = ">=3.5" },
 ]

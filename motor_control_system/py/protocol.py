@@ -9,6 +9,7 @@ import struct
 from collections import namedtuple
 from enum import IntEnum
 
+from fastcrc import crc16
 
 class OP(IntEnum):
     QUEUE_MOVE = 1
@@ -47,19 +48,25 @@ CLI_NAMES = {
 
 
 def build_command_packet(seq_id, operation, arg, direction):
-    return struct.pack("<BBfb", seq_id, operation, arg, direction)
+    payload = struct.pack("<BBfb", seq_id, operation, arg, direction)
+    checksum = crc16.modbus(payload)
+    return payload + struct.pack("<H", checksum)
 
 
-RESPONSE_FORMAT = "<BBBffffffff"
+RESPONSE_PAYLOAD_SIZE = struct.calcsize("<BBBffffffff")
+RESPONSE_FORMAT = "<BBBffffffffH"
 RESPONSE_SIZE = struct.calcsize(RESPONSE_FORMAT)
 
 ResponsePacket = namedtuple("ResponsePacket", ["seq_id", "status", "is_active", "w1", "w2", "v1", "v2", "d1", "d2", "x1", "x2"])
 
 
 def parse_response_packet(data):
-    seq_id, status, is_active, w1, w2, v1, v2, d1, d2, x1, x2 = struct.unpack(
-        RESPONSE_FORMAT, data[:RESPONSE_SIZE]
+    data = data[:RESPONSE_SIZE]
+    seq_id, status, is_active, w1, w2, v1, v2, d1, d2, x1, x2, checksum = struct.unpack(
+        RESPONSE_FORMAT, data
     )
+    if crc16.modbus(data[:RESPONSE_PAYLOAD_SIZE]) != checksum:
+        raise ValueError(f"checksum mismatch in response {data!r}")
     return ResponsePacket(seq_id, Status(status), is_active, w1, w2, v1, v2, d1, d2, x1, x2)
 
 # fmt: on

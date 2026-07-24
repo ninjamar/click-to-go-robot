@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Arduino.h>
+#include <FastCRC.h>
 
 // WARNING: If you modify this code, re-generate the protocol
 // SI units
@@ -35,7 +36,7 @@ struct CommandPacket {
     uint8_t operation;
     float arg; // meaning depends on operation, see above
     int8_t direction; // -1, 0, or 1; back, stop, forward
-    // uint8_t checksum;
+    uint16_t checksum; // CRC-16/MODBUS over the preceding bytes
 } __attribute__((packed)); // Pack it tightly to match python struct
 
 struct ResponsePacket {
@@ -50,7 +51,7 @@ struct ResponsePacket {
     float d2; // linear distance of wheel B, m
     float x1; // signed linear displacement of wheel A, m
     float x2; // signed linear displacement of wheel B, m
-    // uint8_t checksum;
+    uint16_t checksum; // CRC-16/MODBUS over the preceding bytes
 } __attribute__((packed));
 
 class SerialProtocol {
@@ -72,7 +73,10 @@ public:
             return false;
         }
 
-        return true;
+        uint16_t expected = _crc16.modbus(
+            reinterpret_cast<const uint8_t*>(&out),
+            sizeof(CommandPacket) - sizeof(out.checksum));
+        return expected == out.checksum;
     }
 
     void sendResponse(const CommandPacket& pk, ResponseStatus status, bool isActive, float w1, float w2, float v1, float v2, float d1, float d2, float x1, float x2) {
@@ -85,6 +89,7 @@ public:
 
 private:
     Stream& _serial;
+    FastCRC16 _crc16;
 
     ResponsePacket buildResponse(const CommandPacket& in, uint8_t status, bool isActive, float w1, float w2, float v1, float v2, float d1, float d2, float x1, float x2) {
         ResponsePacket resp;
@@ -99,6 +104,9 @@ private:
         resp.d2 = d2;
         resp.x1 = x1;
         resp.x2 = x2;
+        resp.checksum = _crc16.modbus(
+            reinterpret_cast<const uint8_t*>(&resp),
+            sizeof(ResponsePacket) - sizeof(resp.checksum));
         return resp;
     }
 

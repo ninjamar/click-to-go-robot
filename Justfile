@@ -3,8 +3,8 @@ set default-list := true
 format:
     #!/usr/bin/env zsh
 
-    ruff format . 
     isort .
+    ruff format . 
     clang-format -i $(fd -e cpp -e hpp . motor_control_system) # fd respects gitignore; the dot is the pattern (find all)
 
 
@@ -33,3 +33,20 @@ generate-protocol: compiledb
 [no-exit-message]
 @mcs-test *args:
     pytest motor_control_system/py/tests {{args}}
+
+docker-build:
+    docker build -f ros2_ws/Dockerfile -t ros2 .
+
+docker-compose:
+    docker compose -f ros2_ws/compose.yaml up -d
+
+# use when hardware is actually plugged in and attached via `orb usb attach`
+docker-compose-hardware:
+    docker compose -f ros2_ws/compose.yaml -f ros2_ws/compose.hardware.yaml up -d
+
+docker-shell:
+    docker exec -it ros2 bash
+
+# lists the device paths Docker actually sees, for wiring up compose.hardware.yaml
+usb-devices:
+    docker run --rm -v /dev:/dev busybox sh -c 'ls -l /dev/ttyUSB* /dev/ttyACM* 2>/dev/null'

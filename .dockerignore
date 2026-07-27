@@ -1,0 +1,5 @@
+# Deny everything, then allow only the paths the Dockerfile COPYs.
+*
+
+!motor_control_system/py
+!ros2_ws/src

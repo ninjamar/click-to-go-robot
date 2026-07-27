@@ -1,0 +1,10 @@
+services:
+  ros2:
+    container_name: ros2
+    build:
+      context: ..
+      dockerfile: ros2_ws/Dockerfile
+    volumes:
+      - ./src:/workspace/ros2_ws/src
+    stdin_open: true
+    tty: true

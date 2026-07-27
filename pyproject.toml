@@ -3,11 +3,12 @@ name = "motor-control-system"
 version = "0.1.0"
 description = "Motor Control System"
 readme = "README.md"
-requires-python = ">=3.14"
+requires-python = "~=3.12.0" # due to ros2 on ubuntu 24.04
 dependencies = [
     "fastcrc>=0.3.6",
     "libclang>=18.1.1",
     "pyserial>=3.5",
+    "motor-protocol",
 ]
 
 [dependency-groups]
@@ -18,8 +19,20 @@ dev = [
     "ty>=0.0.59",
 ]
 
-[tool.pytest.ini_options]
-pythonpath = ["motor_control_system/py"]
+[tool.uv.sources]
+motor-protocol = { workspace = true }
 
-[tool.pyright]
-extraPaths = ["motor_control_system/py"]
+[tool.uv.workspace]
+members = ["motor_control_system/py"]
+
+[tool.ty.src]
+# ros2_ws packages depend on ROS2 which are only available in the docker
+# container. these imports trigger ty
+exclude = ["ros2_ws/src"]
+
+[tool.ruff]
+extend-exclude = ["ros2_ws/src/ldlidar_sl_ros2"] # ignore vendored submodule
+
+[tool.isort]
+skip_gitignore = true
+skip = ["ros2_ws/src/ldlidar_sl_ros2"]

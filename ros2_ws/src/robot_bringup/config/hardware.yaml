@@ -1,0 +1,16 @@
+# AUTO-GENERATED — DO NOT EDIT BY HAND.
+# baud_rate and track_width are extracted from config.hpp by generate_hardware_config.py.
+# Run `just generate-config` to regenerate after changing config.hpp.
+#
+# serial_port and emergency_stop_distance are not in config.hpp.
+# To change them, edit the render() function in generate_hardware_config.py and regenerate.
+
+motor_control_bridge:
+  ros__parameters:
+    serial_port: /dev/ttyUSB1  # Nano; lidar occupies /dev/ttyUSB0
+    baud_rate: 57600  # mirrors BAUD_RATE in config.hpp
+    track_width: 0.15  # mirrors TRACK_WIDTH_M in config.hpp — TODO: calibrate
+
+robot_controller:
+  ros__parameters:
+    emergency_stop_distance: 0.30  # meters

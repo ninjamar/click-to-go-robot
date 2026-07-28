@@ -24,7 +24,11 @@ lint: compiledb
     clang-tidy -p motor_control_system motor_control_system/src/main.cpp
 
 generate-protocol: compiledb
-    python motor_control_system/py/scripts/generate_protocol.py
+    cd motor_control_system/py && python -m scripts.codegen.generate_protocol
+
+generate-config: compiledb
+    cd motor_control_system/py && python -m scripts.codegen.generate_protocol
+    cd motor_control_system/py && python -m scripts.codegen.generate_hardware_config
 
 [no-exit-message]
 @mcs-send-command *args:

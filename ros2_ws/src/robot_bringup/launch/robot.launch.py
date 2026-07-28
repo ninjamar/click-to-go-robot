@@ -10,18 +10,14 @@ from launch_ros.actions import Node
 def generate_launch_description():
     bringup_dir = get_package_share_directory("robot_bringup")
 
-    slam_params = os.path.join(bringup_dir, "config", "slam_params.yaml")
-    nav2_params = os.path.join(bringup_dir, "config", "nav2_params.yaml")
-    bridge_params = os.path.join(
-        get_package_share_directory("motor_control_bridge"),
-        "config",
-        "bridge_params.yaml",
-    )
-    controller_params = os.path.join(
-        get_package_share_directory("robot_controller"),
-        "config",
-        "controller_params.yaml",
-    )
+    # hardware.yaml: physical constants (serial port, track width, robot radius, speeds).
+    # tuning.yaml: algorithm params (SLAM settings, Nav2 critic weights, motion slices).
+    # Our own nodes receive both; hardware values override tuning values on any overlap.
+    # SLAM and Nav2 (via IncludeLaunchDescription) receive only tuning_params — their
+    # launch files accept a single params file. Values marked "mirrors hardware.yaml"
+    # in tuning.yaml must be kept in sync manually.
+    hardware_params = os.path.join(bringup_dir, "config", "hardware.yaml")
+    tuning_params = os.path.join(bringup_dir, "config", "tuning.yaml")
 
     # Lidar driver: opens /dev/ttyUSB0, publishes /scan (frame: base_laser) and
     # a static TF base_link→base_laser at z=0.18 m.
@@ -46,7 +42,7 @@ def generate_launch_description():
             )
         ),
         launch_arguments={
-            "params_file": slam_params,
+            "params_file": tuning_params,
             "use_sim_time": "false",
         }.items(),
     )
@@ -62,7 +58,7 @@ def generate_launch_description():
             )
         ),
         launch_arguments={
-            "params_file": nav2_params,
+            "params_file": tuning_params,
             "use_sim_time": "false",
         }.items(),
     )
@@ -72,7 +68,7 @@ def generate_launch_description():
     bridge = Node(
         package="motor_control_bridge",
         executable="bridge_node",
-        parameters=[bridge_params],
+        parameters=[tuning_params, hardware_params],
         output="screen",
     )
 
@@ -80,7 +76,7 @@ def generate_launch_description():
     controller = Node(
         package="robot_controller",
         executable="controller_node",
-        parameters=[controller_params],
+        parameters=[tuning_params, hardware_params],
         output="screen",
     )
 

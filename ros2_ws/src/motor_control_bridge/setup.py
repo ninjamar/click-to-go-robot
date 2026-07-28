@@ -1,5 +1,3 @@
-from glob import glob
-
 from setuptools import find_packages, setup
 
 package_name = "motor_control_bridge"
@@ -11,7 +9,6 @@ setup(
     data_files=[
         ("share/ament_index/resource_index/packages", ["resource/" + package_name]),
         ("share/" + package_name, ["package.xml"]),
-        ("share/" + package_name + "/config", glob("config/*.yaml")),
     ],
     install_requires=["setuptools"],
     zip_safe=True,
@@ -19,11 +16,6 @@ setup(
     maintainer_email="root@todo.todo",
     description="TODO: Package description",
     license="TODO: License declaration",
-    extras_require={
-        "test": [
-            "pytest",
-        ],
-    },
     entry_points={
         "console_scripts": ["bridge_node = motor_control_bridge.bridge_node:main"],
     },

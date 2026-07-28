@@ -4,21 +4,16 @@ Generate protocol.py from serial_protocol.hpp via a real libclang parse.
 Usage: just generate-protocol (requires compile_commands.json - run `pio run -t compiledb` first)
 """
 
-import glob
-import json
 import os
-import shlex
 from pathlib import Path
 
 import clang.cindex
 
-SCRIPTS_DIR = Path(__file__).parent
-PY_DIR = SCRIPTS_DIR.parent
-PROJECT_DIR = PY_DIR.parent
-COMPILE_COMMANDS = PROJECT_DIR / "compile_commands.json"
-MAIN_CPP = "src/main.cpp"
-SERIAL_PROTOCOL_HPP = "lib/serial_protocol/serial_protocol.hpp"
-OUTPUT_FILE = PY_DIR / "protocol.py"
+from .firmware_parse import collect_decls, find_decl, parse_firmware
+
+PROJECT_DIR = Path(__file__).parents[3]  # motor_control_system/
+SERIAL_PROTOCOL_HPP = PROJECT_DIR / "lib/serial_protocol/serial_protocol.hpp"
+OUTPUT_FILE = Path(__file__).parents[2] / "protocol.py"  # py/protocol.py
 
 TYPE_MAP = {
     "uint8_t": "B",
@@ -26,68 +21,6 @@ TYPE_MAP = {
     "uint16_t": "H",
     "float": "f",
 }
-
-
-def load_compile_args():
-    if not COMPILE_COMMANDS.exists():
-        raise SystemExit(
-            f"{COMPILE_COMMANDS} not found. Run `pio run -t compiledb` in "
-            f"{PROJECT_DIR} first."
-        )
-
-    entries = json.loads(COMPILE_COMMANDS.read_text())
-    entry = next((e for e in entries if e["file"] == MAIN_CPP), None)
-    if entry is None:
-        raise SystemExit(f"No compile_commands.json entry for {MAIN_CPP}")
-
-    tokens = shlex.split(entry["command"])
-    # Derive the toolchain root from tokens[0] (the compiler path) instead of
-    # hardcoding it, so this works regardless of PLATFORMIO_CORE_DIR.
-    toolchain = Path(tokens[0]).parent.parent
-    if not toolchain.exists():
-        raise SystemExit(f"AVR toolchain not found at {toolchain}")
-
-    args = []
-    i = 1  # skip the compiler executable itself
-    while i < len(tokens):
-        tok = tokens[i]
-        if tok in ("-o", "-c"):
-            i += 2 if tok == "-o" else 1
-            continue
-        if tok == tokens[-1]:  # trailing input file
-            i += 1
-            continue
-        args.append(tok)
-        i += 1
-
-    # libclang isn't avr-g++, so it doesn't know avr-g++'s own builtin include dirs - add them explicitly.
-    gcc_builtin_include = glob.glob(str(toolchain / "lib/gcc/avr/*/include"))
-    if not gcc_builtin_include:
-        raise SystemExit(f"No gcc builtin include dir found under {toolchain}")
-
-    extra_includes = gcc_builtin_include + [str(toolchain / "avr/include")]
-    args = ["--target=avr"] + [f"-I{d}" for d in extra_includes] + args
-    return entry["directory"], args
-
-
-def collect_decls(tu, target_file):
-    """One pass over the whole AST, keyed by (name, kind), instead of a
-    fresh walk_preorder() per lookup."""
-    decls = {}
-    for cursor in tu.cursor.walk_preorder():
-        if (
-            cursor.location.file
-            and os.path.realpath(str(cursor.location.file)) == target_file
-        ):
-            decls[(cursor.spelling, cursor.kind)] = cursor
-    return decls
-
-
-def find_decl(decls, name, kind):
-    cursor = decls.get((name, kind))
-    if cursor is None:
-        raise SystemExit(f"Couldn't find {kind} {name!r} in {SERIAL_PROTOCOL_HPP}")
-    return cursor
 
 
 def is_queued(op_name):
@@ -215,17 +148,9 @@ def parse_response_packet(data):
 
 
 def main():
-    directory, args = load_compile_args()
-    os.chdir(directory)
+    tu = parse_firmware()
 
-    index = clang.cindex.Index.create()
-    tu = index.parse(MAIN_CPP, args=args)
-
-    errors = [d for d in tu.diagnostics if d.severity >= clang.cindex.Diagnostic.Error]
-    if errors:
-        raise SystemExit("\n".join(str(d) for d in errors))
-
-    target_file = os.path.realpath(SERIAL_PROTOCOL_HPP)
+    target_file = os.path.realpath(str(SERIAL_PROTOCOL_HPP))
     enum_decl = clang.cindex.CursorKind.ENUM_DECL  # ty: ignore[unresolved-attribute]
     struct_decl = clang.cindex.CursorKind.STRUCT_DECL  # ty: ignore[unresolved-attribute]
 

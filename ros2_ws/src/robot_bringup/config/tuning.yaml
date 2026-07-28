@@ -1,15 +1,63 @@
-# Nav2 parameter file for a differential-drive robot with point-turn navigation.
+# Algorithm and motion tuning. Safe to adjust without touching hardware.
 #
-# Nav2 is a collection of lifecycle nodes managed by a lifecycle_manager. Each section
-# below configures one node. navigation_launch.py starts all of them and handles
-# the lifecycle transitions (configure → activate) automatically.
-#
-# Key design choices:
-#   - Rotation Shim Controller: rotates the robot to face the path direction before
-#     driving forward, which suits our point-turn-only hardware.
-#   - MPPI local controller: samples many candidate trajectories and picks the best.
-#   - NavFn global planner: A* path planning over the SLAM map.
-#   - No AMCL: SLAM Toolbox provides localization via TF map→odom.
+# Some values here (robot_radius, vx_max, wz_max, max_velocity) are physical
+# constraints that mirror hardware.yaml. They appear here because slam_toolbox
+# and nav2_bringup launch files accept only one params file; keep them in sync
+# with hardware.yaml manually until codegen covers them.
+
+motor_control_bridge:
+  ros__parameters:
+    slice_distance: 0.05  # m per forward/backward firmware command
+    slice_angle: 0.10     # rad per in-place rotation firmware command
+    angular_threshold: 0.05  # rad/s; below this, angular intent is treated as zero
+    linear_threshold: 0.02   # m/s; below this, linear intent is treated as zero
+
+slam_toolbox:
+  ros__parameters:
+    use_sim_time: false
+    odom_frame: odom
+    map_frame: map
+    base_frame: base_link
+    scan_topic: /scan
+    mode: mapping
+    debug_logging: false
+    throttle_scans: 1
+    transform_publish_period: 0.02
+    map_update_interval: 5.0
+    resolution: 0.05
+    max_laser_range: 12.0  # LD14P spec; mirrors hardware.yaml
+    minimum_travel_distance: 0.5
+    minimum_travel_heading: 0.5
+    scan_buffer_size: 10
+    scan_buffer_maximum_scan_distance: 10.0
+    link_match_minimum_response_fine: 0.1
+    link_scan_maximum_distance: 1.5
+    loop_search_maximum_distance: 3.0
+    do_loop_closing: true
+    loop_match_minimum_chain_size: 10
+    loop_match_maximum_variance_covariance: 3.0
+    loop_match_minimum_response_fine: 0.45
+    loop_match_minimum_response_coarse: 0.35
+    correlation_search_space_dimension: 0.5
+    correlation_search_space_resolution: 0.01
+    correlation_search_space_smear_deviation: 0.1
+    loop_search_space_dimension: 8.0
+    loop_search_space_resolution: 0.05
+    loop_search_space_smear_deviation: 0.03
+    distance_variance_penalty: 0.5
+    angle_variance_penalty: 1.0
+    fine_search_angle_offset: 0.00349
+    coarse_search_angle_offset: 0.349
+    coarse_angle_resolution: 0.0349
+    minimum_angle_penalty: 0.9
+    minimum_distance_penalty: 0.5
+    use_response_expansion: true
+    solver_plugin: solver_plugins::CeresSolver
+    ceres_linear_solver: SPARSE_NORMAL_CHOLESKY
+    ceres_preconditioner: SCHUR_JACOBI
+    ceres_trust_strategy: LEVENBERG_MARQUARDT
+    ceres_dogleg_type: TRADITIONAL_DOGLEG
+    ceres_loss_function: None
 
 bt_navigator:
   ros__parameters:
@@ -17,8 +65,6 @@ bt_navigator:
     global_frame: map
     robot_base_frame: base_link
     odom_topic: /odom
-    # How long the BT (Behavior Tree) loop runs per tick, and the default timeout
-    # for waiting on action servers to respond during startup.
     bt_loop_duration: 10
     default_server_timeout: 20
     wait_for_service_timeout: 1000
@@ -32,7 +78,7 @@ bt_navigator:
 controller_server:
   ros__parameters:
     use_sim_time: false
-    controller_frequency: 10.0  # Hz; how often /cmd_vel is published
+    controller_frequency: 10.0
     min_x_velocity_threshold: 0.001
     min_y_velocity_threshold: 0.5
     min_theta_velocity_threshold: 0.001
@@ -41,44 +87,35 @@ controller_server:
     goal_checker_plugins: ["general_goal_checker"]
     controller_plugins: ["FollowPath"]
 
-    # Progress checker: fails the goal if the robot hasn't moved enough within the window.
     progress_checker:
       plugin: "nav2_controller::SimpleProgressChecker"
       required_movement_radius: 0.5
       movement_time_allowance: 10.0
 
-    # Goal checker: declares success when within these tolerances of the target pose.
     general_goal_checker:
       stateful: true
       plugin: "nav2_controller::SimpleGoalChecker"
-      xy_goal_tolerance: 0.25   # meters
-      yaw_goal_tolerance: 0.25  # radians
+      xy_goal_tolerance: 0.25
+      yaw_goal_tolerance: 0.25
 
-    # Rotation Shim Controller wraps MPPI. When the robot's heading is more than
-    # angular_dist_threshold radians away from the path direction, it rotates in place
-    # first (using rotate_to_heading_angular_vel) before handing off to MPPI to follow
-    # the path. This enforces the point-turn behavior our hardware requires.
     FollowPath:
       plugin: "nav2_rotation_shim_controller::RotationShimController"
-      angular_dist_threshold: 0.785  # ~45 deg; rotate in place if heading is further off
+      angular_dist_threshold: 0.785
       forward_sampling_distance: 0.5
-      rotate_to_heading_angular_vel: 0.8   # rad/s for the in-place rotation phase
+      rotate_to_heading_angular_vel: 0.8
       max_angular_accel: 2.0
       simulate_ahead_time: 1.0
       primary_controller: "nav2_mppi_controller::MPPIController"
-
-      # MPPI (Model Predictive Path Integral): samples 2000 candidate trajectories
-      # at each step and picks the trajectory with the lowest weighted cost.
-      time_steps: 56          # lookahead steps
-      model_dt: 0.05          # seconds per step → 2.8 s lookahead
+      time_steps: 56
+      model_dt: 0.05
       batch_size: 2000
-      vx_std: 0.2             # velocity sampling std dev
-      vy_std: 0.0             # differential drive: no lateral velocity
+      vx_std: 0.2
+      vy_std: 0.0
       wz_std: 0.4
-      vx_max: 0.3             # m/s forward — conservative for indoor use
-      vx_min: -0.1            # m/s backward
+      vx_max: 0.3   # mirrors hardware.yaml
+      vx_min: -0.1
       vy_max: 0.0
-      wz_max: 1.5             # rad/s angular
+      wz_max: 1.5   # mirrors hardware.yaml
       ax_max: 3.0
       ax_min: -3.0
       az_max: 3.5
@@ -90,8 +127,6 @@ controller_server:
       motion_model: "DiffDrive"
       visualize: false
       reset_period: 1.0
-
-      # Critics score each sampled trajectory; lower total score = better trajectory.
       critics: [
         "ConstraintCritic", "CostCritic", "GoalCritic",
         "GoalAngleCritic", "PathAlignCritic", "PathFollowCritic",
@@ -157,8 +192,8 @@ planner_server:
     GridBased:
       plugin: "nav2_navfn_planner::NavfnPlanner"
       tolerance: 0.5
-      use_astar: false    # Dijkstra by default; set true for A* (faster in open spaces)
-      allow_unknown: true # plan through unexplored cells
+      use_astar: false
+      allow_unknown: true
 
 smoother_server:
   ros__parameters:
@@ -178,7 +213,6 @@ behavior_server:
     local_footprint_topic: local_costmap/published_footprint
     global_footprint_topic: global_costmap/published_footprint
     cycle_frequency: 10.0
-    # Recovery behaviors: Nav2 tries these when the robot gets stuck.
     behavior_plugins: ["spin", "backup", "drive_on_heading", "wait"]
     spin:
       plugin: "nav2_behaviors::Spin"
@@ -214,8 +248,8 @@ velocity_smoother:
     smoothing_frequency: 20.0
     scale_velocities: false
     feedback: "OPEN_LOOP"
-    max_velocity: [0.3, 0.0, 1.5]   # [vx, vy, wz] — match vx_max/wz_max above
-    min_velocity: [-0.1, 0.0, -1.5]
+    max_velocity: [0.3, 0.0, 1.5]    # mirrors hardware.yaml
+    min_velocity: [-0.1, 0.0, -1.5]  # mirrors hardware.yaml
     max_accel: [2.5, 0.0, 3.2]
     max_decel: [-2.5, 0.0, -3.2]
     odom_topic: "/odom"
@@ -223,8 +257,6 @@ velocity_smoother:
     deadband_velocity: [0.0, 0.0, 0.0]
     velocity_timeout: 1.0
 
-# The local costmap is a small rolling window around the robot used by the local
-# controller. It updates frequently from live /scan data to detect nearby obstacles.
 local_costmap:
   local_costmap:
     ros__parameters:
@@ -234,10 +266,10 @@ local_costmap:
       global_frame: odom
       robot_base_frame: base_link
       rolling_window: true
-      width: 3       # meters
-      height: 3      # meters
+      width: 3
+      height: 3
       resolution: 0.05
-      robot_radius: 0.15  # TODO: measure actual robot radius
+      robot_radius: 0.15  # mirrors hardware.yaml track_width — TODO: measure
       plugins: ["obstacle_layer", "inflation_layer"]
       obstacle_layer:
         plugin: "nav2_costmap_2d::ObstacleLayer"
@@ -256,11 +288,9 @@ local_costmap:
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 3.0
-        inflation_radius: 0.4  # meters; keep paths this far from obstacles
+        inflation_radius: 0.4
       always_send_full_costmap: true
 
-# The global costmap covers the entire SLAM map. Updated less frequently;
-# used by the global planner to find a path from current pose to goal.
 global_costmap:
   global_costmap:
     ros__parameters:
@@ -269,7 +299,7 @@ global_costmap:
       publish_frequency: 1.0
       global_frame: map
       robot_base_frame: base_link
-      robot_radius: 0.15  # TODO: measure actual robot radius
+      robot_radius: 0.15  # mirrors hardware.yaml — TODO: measure
       resolution: 0.05
       track_unknown_space: true
       plugins: ["static_layer", "obstacle_layer", "inflation_layer"]

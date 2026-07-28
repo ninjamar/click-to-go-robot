@@ -134,9 +134,11 @@ class BridgeNode(Node):
             return
 
         # Terminal response: a POLL result, STOP ACK, or queued command completion.
-        # v1/v2 are non-zero only on POLL responses; completion ACKs carry zeros.
-        if resp.v1 or resp.v2:
-            self._integrate_odom(resp.v1, resp.v2)
+        # Always integrate — even zero velocities must publish to keep the odom TF
+        # alive for SLAM Toolbox. Completion responses carry v1=v2=0 (firmware uses
+        # sendStatus, not a full data response), so they momentarily report zero speed,
+        # which is harmless since the next slice starts immediately after.
+        self._integrate_odom(resp.v1, resp.v2)
 
         self._state = BridgeState.IDLE
         self._inflight_seq = None

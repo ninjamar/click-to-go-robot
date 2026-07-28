@@ -3,5 +3,5 @@ services:
     devices:
       # attach via `orb usb attach` first, then run `just usb-devices` to
       # find the path — only layer this file on when hardware is plugged in.
-      - /dev/ttyUSB0
-      # - /dev/ttyUSB1
+      - /dev/ttyUSB0  # lidar (LD14P)
+      - /dev/ttyUSB1  # Arduino Nano

@@ -1,0 +1,72 @@
+slam_toolbox:
+  ros__parameters:
+    use_sim_time: false
+
+    # Frame names — must match what the bridge and lidar driver publish
+    odom_frame: odom
+    map_frame: map
+    base_frame: base_link
+    scan_topic: /scan
+
+    mode: mapping  # builds a new map on each run; use localization mode to reuse a saved map
+
+    # Map resolution and update rate
+    resolution: 0.05        # meters per cell; finer = more detail but more memory
+    map_update_interval: 5.0  # seconds between full map publishes to /map
+
+    # LD14P laser range
+    max_laser_range: 12.0   # meters; clip readings beyond this
+
+    # How much the robot must move before scan-matching runs again.
+    # Tuned for slow indoor speeds; lower values improve quality but increase CPU.
+    minimum_travel_distance: 0.5   # meters
+    minimum_travel_heading: 0.5    # radians
+
+    # Scan buffer: how many scans to accumulate before attempting a match
+    scan_buffer_size: 10
+    scan_buffer_maximum_scan_distance: 10.0
+
+    # Scan-matching thresholds
+    link_match_minimum_response_fine: 0.1
+    link_scan_maximum_distance: 1.5
+
+    # Loop closure: detects when the robot returns to a previously mapped area
+    # and corrects accumulated drift from that loop.
+    do_loop_closing: true
+    loop_search_maximum_distance: 3.0
+    loop_match_minimum_chain_size: 10
+    loop_match_maximum_variance_covariance: 3.0
+    loop_match_minimum_response_fine: 0.45
+    loop_match_minimum_response_coarse: 0.35
+
+    # Correlation search parameters for scan matching
+    correlation_search_space_dimension: 0.5
+    correlation_search_space_resolution: 0.01
+    correlation_search_space_smear_deviation: 0.1
+
+    # Loop search space
+    loop_search_space_dimension: 8.0
+    loop_search_space_resolution: 0.05
+    loop_search_space_smear_deviation: 0.03
+
+    # Penalty weights for distance/angle deviation during matching
+    distance_variance_penalty: 0.5
+    angle_variance_penalty: 1.0
+    fine_search_angle_offset: 0.00349
+    coarse_search_angle_offset: 0.349
+    coarse_angle_resolution: 0.0349
+    minimum_angle_penalty: 0.9
+    minimum_distance_penalty: 0.5
+
+    # Solver (Ceres) settings — defaults work well for indoor environments
+    solver_plugin: solver_plugins::CeresSolver
+    ceres_linear_solver: SPARSE_NORMAL_CHOLESKY
+    ceres_preconditioner: SCHUR_JACOBI
+    ceres_trust_strategy: LEVENBERG_MARQUARDT
+    ceres_dogleg_type: TRADITIONAL_DOGLEG
+    ceres_loss_function: None
+
+    debug_logging: false
+    throttle_scans: 1
+    transform_publish_period: 0.02  # seconds between TF map→odom publishes
+    use_response_expansion: true

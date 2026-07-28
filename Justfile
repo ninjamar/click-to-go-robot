@@ -47,6 +47,14 @@ docker-compose-hardware:
 docker-shell:
     docker exec -it ros2 bash
 
+# rebuild colcon packages inside the running container after source changes
+colcon-build:
+    docker exec -it ros2 bash -c "cd /workspace/ros2_ws && colcon build && source install/setup.bash"
+
+# launch the full navigation stack (lidar + SLAM + Nav2 + bridge + controller)
+launch:
+    docker exec -it ros2 bash -c "source /workspace/ros2_ws/install/setup.bash && ros2 launch robot_bringup robot.launch.py"
+
 # lists the device paths Docker actually sees, for wiring up compose.hardware.yaml
 usb-devices:
     docker run --rm -v /dev:/dev busybox sh -c 'ls -l /dev/ttyUSB* /dev/ttyACM* 2>/dev/null'

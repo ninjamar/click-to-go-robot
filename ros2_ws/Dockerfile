@@ -7,6 +7,9 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
 RUN apt-get update && apt-get install -y --no-install-recommends \
         python3-serial \
         ros-dev-tools \
+        ros-jazzy-slam-toolbox \
+        ros-jazzy-nav2-bringup \
+        ros-jazzy-navigation2 \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /workspace

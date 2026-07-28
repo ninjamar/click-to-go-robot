@@ -1,0 +1,7 @@
+robot_controller:
+  ros__parameters:
+
+    # Minimum lidar range before the controller cancels the active Nav2 goal.
+    # Nav2's local costmap handles normal obstacle avoidance; this is a last-resort
+    # safety cutoff for cases where the costmap hasn't replanned in time.
+    emergency_stop_distance: 0.30  # m

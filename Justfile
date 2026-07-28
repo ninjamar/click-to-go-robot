@@ -38,26 +38,27 @@ generate-config: compiledb
 @mcs-test *args:
     pytest motor_control_system/py/tests {{args}}
 
-docker-build:
-    docker build -f ros2_ws/Dockerfile -t ros2 .
-
-docker-compose:
+docker-up:
     docker compose -f ros2_ws/compose.yaml up -d
 
+# rebuilds the image (use after changing Dockerfile or apt deps)
+docker-rebuild:
+    docker compose -f ros2_ws/compose.yaml up --build -d
+
 # use when hardware is actually plugged in and attached via `orb usb attach`
-docker-compose-hardware:
+docker-up-hardware:
     docker compose -f ros2_ws/compose.yaml -f ros2_ws/compose.hardware.yaml up -d
 
 docker-shell:
-    docker exec -it ros2 bash
+    docker exec ros2 bash
 
 # rebuild colcon packages inside the running container after source changes
 colcon-build:
-    docker exec -it ros2 bash -c "cd /workspace/ros2_ws && colcon build && source install/setup.bash"
+    docker exec ros2 bash -c "source /opt/ros/jazzy/setup.bash && cd /workspace/ros2_ws && colcon build"
 
 # launch the full navigation stack (lidar + SLAM + Nav2 + bridge + controller)
 launch:
-    docker exec -it ros2 bash -c "source /workspace/ros2_ws/install/setup.bash && ros2 launch robot_bringup robot.launch.py"
+    docker exec ros2 bash -c "source /workspace/ros2_ws/install/setup.bash && ros2 launch robot_bringup robot.launch.py"
 
 # lists the device paths Docker actually sees, for wiring up compose.hardware.yaml
 usb-devices:

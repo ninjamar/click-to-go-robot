@@ -7,8 +7,6 @@
   <maintainer email="root@todo.todo">root</maintainer>
   <license>TODO: License declaration</license>
 
-  <buildtool_depend>ament_python</buildtool_depend>
-
   <exec_depend>ldlidar_sl_ros2</exec_depend>
   <exec_depend>slam_toolbox</exec_depend>
   <exec_depend>nav2_bringup</exec_depend>

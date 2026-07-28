@@ -10,8 +10,15 @@ import argparse
 import time
 
 import serial
-from protocol import (CLI_NAMES, OP, QUEUED_OPS, RESPONSE_SIZE, Status,
-                      build_command_packet, parse_response_packet)
+from protocol import (
+    CLI_NAMES,
+    OP,
+    QUEUED_OPS,
+    RESPONSE_SIZE,
+    Status,
+    build_command_packet,
+    parse_response_packet,
+)
 
 
 def parse_chain(value):

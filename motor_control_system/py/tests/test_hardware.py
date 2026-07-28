@@ -7,8 +7,13 @@ Usage: pytest py/tests --port /dev/cu.usbserial-XXXX
 import time
 
 import pytest
-from protocol import (OP, RESPONSE_SIZE, Status, build_command_packet,
-                      parse_response_packet)
+from protocol import (
+    OP,
+    RESPONSE_SIZE,
+    Status,
+    build_command_packet,
+    parse_response_packet,
+)
 
 # From config.hpp - MAX_COMMAND_MS is an emergency stop only; STALL_TIMEOUT_MS is the normal abort path.
 MAX_COMMAND_S = 120

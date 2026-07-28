@@ -12,8 +12,7 @@ import math
 import time
 
 import serial
-from protocol import (OP, RESPONSE_SIZE, build_command_packet,
-                      parse_response_packet)
+from protocol import OP, RESPONSE_SIZE, build_command_packet, parse_response_packet
 
 
 def open_conn(port, baud):

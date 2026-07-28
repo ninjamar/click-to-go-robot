@@ -17,11 +17,10 @@ public:
         _motors.setSpeed(pwm);
     }
 
-    // TODO: Figure out rotate
     void driveRotate(int8_t direction, uint8_t pwm) {
-        // applyDirection(direction, /*opposite=*/true);
-        // _motors.setSpeed(pwm);
-        _motors.stop();
+        // In-place rotation
+        applyDirection(direction, /*opposite=*/true);
+        _motors.setSpeed(pwm);
     }
 
     void stop() {

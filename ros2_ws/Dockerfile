@@ -10,6 +10,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         ros-jazzy-slam-toolbox \
         ros-jazzy-nav2-bringup \
         ros-jazzy-navigation2 \
+        ros-jazzy-foxglove-bridge \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /workspace

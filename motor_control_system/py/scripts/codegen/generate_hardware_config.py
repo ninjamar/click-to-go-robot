@@ -59,12 +59,14 @@ def render(baud_rate: int, track_width: float) -> str:
 # baud_rate and track_width are extracted from config.hpp by generate_hardware_config.py.
 # Run `just generate-config` to regenerate after changing config.hpp.
 #
-# serial_port and emergency_stop_distance are not in config.hpp.
-# To change them, edit the render() function in generate_hardware_config.py and regenerate.
+# emergency_stop_distance is not in config.hpp.
+# To change it, edit the render() function in generate_hardware_config.py and regenerate.
+#
+# serial_port is not set here — robot.launch.py detects it at launch time via
+# detect_serial_ports(), since USB enumeration order isn't stable across replugs.
 
 motor_control_bridge:
   ros__parameters:
-    serial_port: /dev/ttyUSB1  # Nano; lidar occupies /dev/ttyUSB0
     baud_rate: {_fmt(baud_rate)}  # mirrors BAUD_RATE in config.hpp
     track_width: {_fmt(track_width)}  # mirrors TRACK_WIDTH_M in config.hpp — TODO: calibrate
 

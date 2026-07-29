@@ -23,12 +23,15 @@ lint: compiledb
     ty check .
     clang-tidy -p motor_control_system motor_control_system/src/main.cpp
 
+
 generate-protocol: compiledb
     cd motor_control_system/py && python -m scripts.codegen.generate_protocol
 
 generate-config: compiledb
     cd motor_control_system/py && python -m scripts.codegen.generate_protocol
     cd motor_control_system/py && python -m scripts.codegen.generate_hardware_config
+
+generate: generate-protocol generate-config
 
 [no-exit-message]
 @mcs-send-command *args:
@@ -50,7 +53,7 @@ docker-up-hardware:
     docker compose -f ros2_ws/compose.yaml -f ros2_ws/compose.hardware.yaml up -d
 
 docker-shell:
-    docker exec ros2 bash
+    docker exec -it ros2 bash
 
 # rebuild colcon packages inside the running container after source changes
 colcon-build:
@@ -59,6 +62,10 @@ colcon-build:
 # launch the full navigation stack (lidar + SLAM + Nav2 + bridge + controller)
 launch:
     docker exec ros2 bash -c "source /workspace/ros2_ws/install/setup.bash && ros2 launch robot_bringup robot.launch.py"
+
+# launch foxglove_bridge so Foxglove Studio can connect at ws://localhost:8765
+foxglove-bridge:
+    docker exec ros2 bash -c "source /workspace/ros2_ws/install/setup.bash && ros2 launch foxglove_bridge foxglove_bridge_launch.xml"
 
 # lists the device paths Docker actually sees, for wiring up compose.hardware.yaml
 usb-devices:

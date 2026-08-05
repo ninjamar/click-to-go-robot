@@ -33,10 +33,10 @@ private:
     void applyDirection(int8_t direction, bool opposite) {
         if (direction > 0) {
             _motors.forwardA();
-            opposite ? _motors.backwardB() : _motors.forwardB();
+            opposite ? _motors.forwardB() : _motors.backwardB();
         } else if (direction < 0) {
             _motors.backwardA();
-            opposite ? _motors.forwardB() : _motors.backwardB();
+            opposite ? _motors.backwardB() : _motors.forwardB();
         } else {
             _motors.stop();
         }

@@ -198,6 +198,7 @@ void loop() {
 
                 if (activeCommand.operation == OP_QUEUE_MOVE_DIST) {
                     // Average only over channels with data
+                    // TODO: Fix encoder A
                     float divisor = ((dsA != 0.0f) ? 1.0f : 0.0f) + ((dsB != 0.0f) ? 1.0f : 0.0f);
                     if (divisor > 0.0f) {
                         accumulatedM += fabsf((dsA + dsB) / divisor);
@@ -207,7 +208,9 @@ void loop() {
                     rampDownAt = RAMP_DOWN_DISTANCE_M;
                     done = accumulatedM >= activeCommand.arg;
                 } else { // OP_QUEUE_ROTATE_ANGLE
-                    accumulatedRad += fabsf((dsB - dsA) / TRACK_WIDTH_M);
+                    // TODO: Fix encoder A
+                    // dsA is unmeasured; mirror motor B's magnitude for both wheels,
+                    accumulatedRad += fabsf(2.0f * dsB / TRACK_WIDTH_M);
                     remaining = activeCommand.arg - accumulatedRad;
                     rampDownAt = RAMP_DOWN_ANGLE_RAD;
                     done = accumulatedRad >= activeCommand.arg;

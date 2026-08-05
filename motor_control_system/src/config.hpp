@@ -43,11 +43,11 @@ const unsigned long STALL_TIMEOUT_MS = S_TO_MS(3.0f); // abort a command with no
 
 // PWM ramp: fixed ramp-up duration, fixed ramp-down margin — not a
 // proportional curve. See computeRampedPwm() in main.cpp.
-const unsigned long RAMP_UP_MS = S_TO_MS(0.3f);
-const unsigned long RAMP_DOWN_MS = S_TO_MS(0.3f); // MOVE / ROTATE (time-based)
-const float RAMP_DOWN_DISTANCE_M = 0.02f; // MOVE_DIST
-const float RAMP_DOWN_ANGLE_RAD = DEG_TO_RADIAN(5.15662); // ROTATE_ANGLE
+const unsigned long RAMP_UP_MS = S_TO_MS(5.0f);
+const unsigned long RAMP_DOWN_MS = S_TO_MS(5.0f); // MOVE / ROTATE (time-based)
+const float RAMP_DOWN_DISTANCE_M = 0.05f; // MOVE_DIST
+const float RAMP_DOWN_ANGLE_RAD = DEG_TO_RADIAN(15); // ROTATE_ANGLE
 
 // PWM
-const uint8_t MIN_PWM = 60; // TODO
-const uint8_t MAX_PWM = 255; // 8-bit PWM ceiling, fixed value
+const uint8_t MIN_PWM = 20; // TODO
+const uint8_t MAX_PWM = 160; // 256 is PWM ceiling

@@ -6,10 +6,11 @@ from typing import NamedTuple
 import rclpy
 import tf2_ros
 from geometry_msgs.msg import TransformStamped, Twist
-from motor_control_bridge.serial_transport import MotorSerial
 from nav_msgs.msg import Odometry
 from protocol import OP, Status
 from rclpy.node import Node
+
+from motor_control_bridge.serial_transport import MotorSerial
 
 # ── types ──────────────────────────────────────────────────────────────────────
 
@@ -23,7 +24,6 @@ class IntentKind(Enum):
     STOP = auto()
     MOVE = auto()
     ROTATE = auto()
-
 
 class Intent(NamedTuple):
     """The motion the bridge should be executing right now."""

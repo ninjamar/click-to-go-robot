@@ -40,17 +40,21 @@ def _launch_setup(context, *args, **kwargs):
             {"frame_id": "base_laser"},
             {"port_name": lidar_port},
             {"serial_baudrate": 230400},
+            # Lidar is mounted upside-down (180° roll), which reverses the physical
+            # CW/CCW handedness of the raw scan relative to the sensor's own frame.
             {"laser_scan_dir": True},
             {"enable_angle_crop_func": False},
             {"angle_crop_min": 135.0},
             {"angle_crop_max": 225.0},
         ],
     )
+    # Lidar is physically flipped 180° about the robot's forward axis (roll),
+    # so base_laser's axes no longer align with base_link's — roll=pi corrects it.
     lidar_tf = Node(
         package="tf2_ros",
         executable="static_transform_publisher",
         name="base_link_to_base_laser_ld14p",
-        arguments=["0", "0", "0.18", "0", "0", "0", "base_link", "base_laser"],
+        arguments=["0", "0", "0.18", "0", "0", "3.14159265", "base_link", "base_laser"],
     )
 
     # SLAM Toolbox: matches /scan against the growing map to build /map and publish

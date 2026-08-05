@@ -3,7 +3,9 @@ set default-list := true
 format:
     #!/usr/bin/env zsh
 
-    isort .
+    # isort .
+    ruff check --select I --fix .
+
     ruff format . 
     clang-format -i $(fd -e cpp -e hpp . motor_control_system) # fd respects gitignore; the dot is the pattern (find all)
 
@@ -66,6 +68,9 @@ launch:
 # launch foxglove_bridge so Foxglove Studio can connect at ws://localhost:8765
 foxglove-bridge:
     docker exec ros2 bash -c "source /workspace/ros2_ws/install/setup.bash && ros2 launch foxglove_bridge foxglove_bridge_launch.xml"
+
+pkill:
+    docker exec ros2 bash -c "pkill -f ros"
 
 # lists the device paths Docker actually sees, for wiring up compose.hardware.yaml
 usb-devices:

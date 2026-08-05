@@ -13,7 +13,7 @@ dependencies = [
 
 [dependency-groups]
 dev = [
-    "isort>=8.0.1",
+    # "isort>=8.0.1",
     "pytest>=9.1.1",
     "ruff>=0.15.21",
     "ty>=0.0.59",
@@ -33,6 +33,6 @@ exclude = ["ros2_ws/src"]
 [tool.ruff]
 extend-exclude = ["ros2_ws/src/ldlidar_sl_ros2"] # ignore vendored submodule
 
-[tool.isort]
-skip_gitignore = true
-skip = ["ros2_ws/src/ldlidar_sl_ros2"]
+# [tool.isort]
+# skip_gitignore = true
+# skip = ["ros2_ws/src/ldlidar_sl_ros2"]

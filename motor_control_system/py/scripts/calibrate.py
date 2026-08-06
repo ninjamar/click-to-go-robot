@@ -14,40 +14,20 @@ import argparse
 import math
 import time
 
-import serial
-from protocol import OP, RESPONSE_SIZE, build_command_packet, parse_response_packet
-
-
-def open_conn(port, baud):
-    conn = serial.Serial(port, baud, timeout=2)
-    time.sleep(2)
-    conn.reset_input_buffer()
-    return conn
-
-
-def send(conn, seq_id, op, arg, direction, timeout=2.0):
-    conn.timeout = timeout
-    conn.write(build_command_packet(seq_id, op, arg, direction))
-    data = b""
-    while len(data) < RESPONSE_SIZE:
-        chunk = conn.read(RESPONSE_SIZE - len(data))
-        if not chunk:
-            break
-        data += chunk
-    return parse_response_packet(data)
+from protocol import OP, SerialClient
 
 
 def cmd_gear_ratio(args):
-    conn = open_conn(args.port, args.baud)
+    client = SerialClient(args.port, args.baud)
     input(
         f"Motor should be unpowered. Ready to hand-turn the WHEEL exactly "
         f"{args.wheel_revs} revolution(s) in one direction. Press Enter to set the baseline..."
     )
-    send(conn, 1, OP.POLL_W, 0, 0)  # zeroes the odometer's accumulator
+    client.call(OP.POLL_W)  # zeroes the odometer's accumulator
     t0 = time.time()
     input(f"Now turn the wheel {args.wheel_revs} revolution(s), then press Enter...")
     t1 = time.time()
-    resp = send(conn, 2, OP.POLL_W, 0, 0)
+    resp = client.call(OP.POLL_W)
     dt = t1 - t0
     motor_shaft_revs = abs(resp.w2) * dt / (2 * math.pi)
     gear_ratio = motor_shaft_revs / args.wheel_revs
@@ -55,66 +35,57 @@ def cmd_gear_ratio(args):
         f"w2={resp.w2:.4f} rad/s over dt={dt:.2f}s -> motor shaft turned {motor_shaft_revs:.3f} rev"
     )
     print(f"GEAR_RATIO ~= {gear_ratio:.3f}")
-    conn.close()
+    client.close()
 
 
 def cmd_min_pwm(args):
-    conn = open_conn(args.port, args.baud)
+    client = SerialClient(args.port, args.baud)
     print(
         "Make sure the wheel is under normal load (on the ground), not free-spinning."
     )
-    seq = 1
     pwm = args.start
     while pwm <= args.stop:
-        send(conn, seq, OP.STOP, 0, 0)
-        seq += 1
+        client.call(OP.STOP)
         time.sleep(0.2)  # settle to a dead stop before testing stiction again
-        send(conn, seq, OP.DEBUG_SET_PWM, float(pwm), args.direction)
-        seq += 1
+        client.call(OP.DEBUG_SET_PWM, pwm=float(pwm), direction=args.direction)
         time.sleep(args.hold)
-        resp = send(conn, seq, OP.POLL_W, 0, 0)
-        seq += 1
+        resp = client.call(OP.POLL_W)
         print(f"pwm={pwm}: w2={resp.w2:.3f} rad/s")
         moved = (
             input("  Did the wheel actually start turning from a dead stop? (y/n) ")
             .strip()
             .lower()
         )
-        send(conn, seq, OP.STOP, 0, 0)
-        seq += 1
+        client.call(OP.STOP)
         if moved == "y":
             print(
                 f"MIN_PWM candidate: {pwm} (rerun this sweep a few times - stiction varies trial to trial)"
             )
-            conn.close()
+            client.close()
             return
         pwm += args.step
     print("Never moved within [--start, --stop] - widen the range.")
-    conn.close()
+    client.close()
 
 
 def cmd_velocity_curve(args):
-    conn = open_conn(args.port, args.baud)
+    client = SerialClient(args.port, args.baud)
     print(
         "Make sure the wheel is under normal load (on the ground), not free-spinning."
     )
-    seq = 1
     samples = []
     pwm = args.start
     while pwm <= args.stop:
-        send(conn, seq, OP.STOP, 0, 0)
-        seq += 1
+        client.call(OP.STOP)
         time.sleep(0.2)  # settle to a dead stop
-        send(conn, seq, OP.DEBUG_SET_PWM, float(pwm), args.direction)
-        seq += 1
+        client.call(OP.DEBUG_SET_PWM, pwm=float(pwm), direction=args.direction)
         time.sleep(args.hold)  # reach steady-state speed
-        resp = send(conn, seq, OP.POLL_W, 0, 0)
-        seq += 1
+        resp = client.call(OP.POLL_W)
         print(f"pwm={pwm}: w2={resp.w2:.3f} rad/s")
         samples.append((pwm, abs(resp.w2)))
         pwm += args.step
-    send(conn, seq, OP.STOP, 0, 0)
-    conn.close()
+    client.call(OP.STOP)
+    client.close()
 
     # Least-squares slope through the MIN_PWM anchor (already calibrated separately).
     num = sum(w * (p - args.min_pwm) for p, w in samples)

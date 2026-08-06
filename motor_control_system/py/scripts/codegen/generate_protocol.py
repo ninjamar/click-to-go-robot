@@ -13,7 +13,9 @@ from .firmware_parse import collect_decls, find_decl, parse_firmware
 
 PROJECT_DIR = Path(__file__).parents[3]  # motor_control_system/
 SERIAL_PROTOCOL_HPP = PROJECT_DIR / "lib/serial_protocol/serial_protocol.hpp"
-OUTPUT_FILE = Path(__file__).parents[2] / "protocol.py"  # py/protocol.py
+OUTPUT_FILE = (
+    Path(__file__).parents[2] / "protocol" / "protocol.py"
+)  # py/protocol/protocol.py
 
 TYPE_MAP = {
     "uint8_t": "B",

@@ -7,18 +7,8 @@ Usage (run from motor_control_system/py/):
 """
 
 import argparse
-import time
 
-import serial
-from protocol import (
-    CLI_NAMES,
-    OP,
-    QUEUED_OPS,
-    RESPONSE_SIZE,
-    Status,
-    build_command_packet,
-    parse_response_packet,
-)
+from protocol import CLI_NAMES, OP, QUEUED_OPS, SerialClient, Status
 
 
 def parse_chain(value):
@@ -29,16 +19,6 @@ def parse_chain(value):
             raise argparse.ArgumentTypeError(f"Unknown operation: {name}")
         ops.append((CLI_NAMES[name], float(arg_str) if arg_str else 0.0))
     return ops
-
-
-def read_response(conn):
-    resp_data = b""
-    while len(resp_data) < RESPONSE_SIZE:
-        chunk = conn.read(RESPONSE_SIZE - len(resp_data))
-        if not chunk:
-            break
-        resp_data += chunk
-    return resp_data
 
 
 def main():
@@ -80,42 +60,30 @@ def main():
 
     args = parser.parse_args()
 
-    conn = serial.Serial(args.port, args.baud, timeout=2)
-    time.sleep(2)
-    conn.reset_input_buffer()
+    client = SerialClient(args.port, args.baud)
 
     seq_id = args.seq_id
     for operation, arg in args.chain:
-        cmd = build_command_packet(seq_id, operation, arg, args.direction)
-        conn.write(cmd)
-
-        conn.timeout = 2
-        resp_data = read_response(conn)
-        resp_seq_id, resp_status, is_active, w1, w2, v1, v2, d1, d2, x1, x2 = (
-            parse_response_packet(resp_data)
-        )
-        print(f"intake: seq_id={resp_seq_id}, status={resp_status.name}")
+        resp = client._call(operation, arg, args.direction, seq_id=seq_id)
+        print(f"intake: seq_id={resp.seq_id}, status={resp.status.name}")
         print(
-            f"  is_active={bool(is_active)}, w1={w1:.4f} rad/s, w2={w2:.4f} rad/s, "
-            f"v1={v1:.4f} m/s, v2={v2:.4f} m/s, d1={d1:.4f} m, d2={d2:.4f} m, "
-            f"x1={x1:.4f} m, x2={x2:.4f} m"
+            f"  is_active={bool(resp.is_active)}, w1={resp.w1:.4f} rad/s, w2={resp.w2:.4f} rad/s, "
+            f"v1={resp.v1:.4f} m/s, v2={resp.v2:.4f} m/s, d1={resp.d1:.4f} m, d2={resp.d2:.4f} m, "
+            f"x1={resp.x1:.4f} m, x2={resp.x2:.4f} m"
         )
 
-        if operation in QUEUED_OPS and resp_status == Status.OK:
+        if operation in QUEUED_OPS and resp.status == Status.OK:
             # Distance/angle ops don't know their own duration - wait past MAX_COMMAND_MS in config.hpp.
             if operation in (OP.QUEUE_MOVE, OP.QUEUE_ROTATE):
-                conn.timeout = arg + 2
+                timeout = arg + 2
             else:
-                conn.timeout = 125.0
-            resp_data = read_response(conn)
-            resp_seq_id, resp_status, _, w1, w2, v1, v2, _, _, _, _ = (
-                parse_response_packet(resp_data)
-            )
-            print(f"completion: seq_id={resp_seq_id}, status={resp_status.name}")
+                timeout = 125.0
+            resp = client.read_response(timeout=timeout)
+            print(f"completion: seq_id={resp.seq_id}, status={resp.status.name}")
 
         seq_id += 1
 
-    conn.close()
+    client.close()
 
 
 if __name__ == "__main__":

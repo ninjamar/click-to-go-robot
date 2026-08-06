@@ -71,15 +71,23 @@ ActiveOpKind classifyOp(uint8_t op) {
     }
 }
 
-// Two independent ramps (up over RAMP_UP_MS, down over the last rampDownAt), take the min.
-uint8_t computeRampedPwm(unsigned long elapsedMs, float remaining, float rampDownAt) {
-    float pwmUp = MIN_PWM + (MAX_PWM - MIN_PWM) * min(elapsedMs / static_cast<float>(RAMP_UP_MS), 1.0f);
-    float pwmDown = MIN_PWM + (MAX_PWM - MIN_PWM) * min(remaining / rampDownAt, 1.0f);
-    float pwm = min(pwmUp, pwmDown);
-    if (pwm < MIN_PWM) {
-        pwm = MIN_PWM;
-    }
-    return static_cast<uint8_t>(pwm);
+// v = sqrt(2*a*d); min of accel/decel phases, capped at MAX_ANGULAR_VEL.
+float computeTargetOmegaByDistance(float traveledShaftRad, float remainingShaftRad) {
+    float omegaUp = sqrtf(2.0f * MAX_ANGULAR_ACCEL * max(traveledShaftRad, 0.0f));
+    float omegaDown = sqrtf(2.0f * MAX_ANGULAR_ACCEL * max(remainingShaftRad, 0.0f));
+    return min(min(omegaUp, omegaDown), MAX_ANGULAR_VEL);
+}
+
+// Same trapezoid, parameterized by time (no distance target available).
+float computeTargetOmegaByTime(float elapsedSec, float remainingSec) {
+    float omegaUp = MAX_ANGULAR_ACCEL * elapsedSec;
+    float omegaDown = MAX_ANGULAR_ACCEL * max(remainingSec, 0.0f);
+    return min(min(omegaUp, omegaDown), MAX_ANGULAR_VEL);
+}
+
+uint8_t pwmFromOmega(float omega) {
+    float pwm = MIN_PWM + PWM_PER_RAD_S * max(omega, 0.0f);
+    return static_cast<uint8_t>(constrain(pwm, MIN_PWM, MAX_PWM));
 }
 
 // All poll calls pass through here. Only accumulates distance if the direction
@@ -175,7 +183,7 @@ void loop() {
         bool done = false;
         ResponseStatus doneStatus = STATUS_SUCCESS;
         float remaining = 0.0f;
-        float rampDownAt = 1.0f; // unused for KIND_RAW_PWM
+        float shaftRadPerUnit = 1.0f; // unused for KIND_RAW_PWM/KIND_TIME_MOVE
 
         if (kind == KIND_RAW_PWM) {
             // No progress metric - this op only ends via OP_STOP or this watchdog.
@@ -190,7 +198,7 @@ void loop() {
 
                 float targetRad = activeCommand.arg * (2 * PI);
                 remaining = targetRad - accumulatedRad;
-                rampDownAt = RAMP_DOWN_ANGLE_RAD;
+                shaftRadPerUnit = 1.0f;
                 done = accumulatedRad >= targetRad;
             } else {
                 float dsA = w1 * dt / GEAR_RATIO * WHEEL_RADIUS_M;
@@ -198,21 +206,19 @@ void loop() {
 
                 if (activeCommand.operation == OP_QUEUE_MOVE_DIST) {
                     // Average only over channels with data
-                    // TODO: Fix encoder A
-                    float divisor = ((dsA != 0.0f) ? 1.0f : 0.0f) + ((dsB != 0.0f) ? 1.0f : 0.0f);
-                    if (divisor > 0.0f) {
-                        accumulatedM += fabsf((dsA + dsB) / divisor);
-                    }
+                    // float divisor = ((dsA != 0.0f) ? 1.0f : 0.0f) + ((dsB != 0.0f) ? 1.0f : 0.0f);
+                    // if (divisor > 0.0f) {
+                    //     accumulatedM += fabsf((dsA + dsB) / divisor);
+                    // }
+                    accumulatedM += fabsf((dsA + dsB) / 2.0f); // Assume two encoders
 
                     remaining = activeCommand.arg - accumulatedM;
-                    rampDownAt = RAMP_DOWN_DISTANCE_M;
+                    shaftRadPerUnit = GEAR_RATIO / WHEEL_RADIUS_M;
                     done = accumulatedM >= activeCommand.arg;
                 } else { // OP_QUEUE_ROTATE_ANGLE
-                    // TODO: Fix encoder A
-                    // dsA is unmeasured; mirror motor B's magnitude for both wheels,
-                    accumulatedRad += fabsf(2.0f * dsB / TRACK_WIDTH_M);
+                    accumulatedRad += fabsf((dsB - dsA) / TRACK_WIDTH_M);
                     remaining = activeCommand.arg - accumulatedRad;
-                    rampDownAt = RAMP_DOWN_ANGLE_RAD;
+                    shaftRadPerUnit = (TRACK_WIDTH_M / 2.0f) * GEAR_RATIO / WHEEL_RADIUS_M;
                     done = accumulatedRad >= activeCommand.arg;
                 }
             }
@@ -237,7 +243,6 @@ void loop() {
         } else { // KIND_TIME_MOVE: OP_QUEUE_MOVE or OP_QUEUE_ROTATE
             float totalMs = S_TO_MS(activeCommand.arg);
             remaining = totalMs - static_cast<float>(elapsedMs);
-            rampDownAt = RAMP_DOWN_MS;
             done = elapsedMs >= static_cast<unsigned long>(totalMs);
         }
 
@@ -249,7 +254,13 @@ void loop() {
             auto pwm = static_cast<uint8_t>(constrain(activeCommand.arg, 0.0f, MAX_PWM));
             motorDriver.driveMove(activeCommand.direction, pwm);
         } else {
-            uint8_t pwm = computeRampedPwm(elapsedMs, max(remaining, 0.0f), rampDownAt);
+            uint8_t pwm;
+            if (kind == KIND_TIME_MOVE) {
+                pwm = pwmFromOmega(computeTargetOmegaByTime(MS_TO_S(elapsedMs), MS_TO_S(max(remaining, 0.0f))));
+            } else {
+                float traveled = (activeCommand.operation == OP_QUEUE_MOVE_DIST) ? accumulatedM : accumulatedRad;
+                pwm = pwmFromOmega(computeTargetOmegaByDistance(traveled * shaftRadPerUnit, max(remaining, 0.0f) * shaftRadPerUnit));
+            }
             if (activeCommand.operation == OP_QUEUE_MOVE
                 || activeCommand.operation == OP_QUEUE_MOVE_DIST
                 || activeCommand.operation == OP_DEBUG_RUN_N_ROTATIONS) {

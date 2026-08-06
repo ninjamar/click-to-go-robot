@@ -105,18 +105,15 @@ def test_poll_w_while_moving(serial_conn, move_seq_id, poll_seq_id, direction):
     assert resp.seq_id == move_seq_id
     assert resp.status == Status.OK
 
-    time.sleep(0.3)  # let motor ramp up so it's actually spinning
+    time.sleep(0.5)  # let motor ramp up; timing depends on MAX_ANGULAR_ACCEL
 
     resp = call(serial_conn, OP.POLL_W, seq_id=poll_seq_id)
     assert resp.seq_id == poll_seq_id
     assert resp.status == Status.SUCCESS
     assert resp.is_active
 
-    # TODO: Fix encoder A
-    assert resp.w1 == 0
-    assert resp.v1 == 0
-    # assert (resp.w1 > 0) == (direction > 0)
-    # assert (resp.v1 > 0) == (direction > 0)
+    assert (resp.w1 > 0) == (direction > 0)
+    assert (resp.v1 > 0) == (direction > 0)
 
     assert (resp.w2 > 0) == (direction > 0)
     assert (resp.v2 > 0) == (direction > 0)
@@ -140,11 +137,8 @@ def test_debug_set_pwm(serial_conn):
     assert resp.status == Status.SUCCESS
     assert resp.is_active
 
-    # TODO: Fix encoder A
-    assert resp.w1 == 0
-    assert resp.v1 == 0
-    # assert resp.w1 > 0
-    # assert resp.v1 > 0
+    assert resp.w1 > 0
+    assert resp.v1 > 0
 
     assert resp.w2 > 0
     assert resp.v2 > 0
@@ -152,26 +146,6 @@ def test_debug_set_pwm(serial_conn):
     resp = call(serial_conn, OP.STOP, seq_id=42)
     assert resp.seq_id == 42
     assert resp.status == Status.SUCCESS
-
-# TODO: Fix encoder A
-def test_encoder_a_disabled(serial_conn):
-    """Test: TODO: Fix encoder A — motor A's encoder is disabled, so w1/v1/d1/x1
-    stay 0 regardless of motion; only motor B reports real values."""
-    resp = call(serial_conn, OP.RESET_DIST, seq_id=45)
-    assert resp.status == Status.SUCCESS
-
-    resp = call(serial_conn, OP.QUEUE_MOVE, seq_id=46, duration=0.3, direction=1)
-    assert resp.status == Status.OK
-    resp = read_response(serial_conn, timeout=5)
-    assert resp.status == Status.SUCCESS
-
-    resp = call(serial_conn, OP.POLL_DIST, seq_id=47)
-    assert resp.status == Status.SUCCESS
-    assert resp.w1 == 0
-    assert resp.v1 == 0
-    assert resp.d1 == 0
-    assert resp.x1 == 0
-    assert resp.d2 > 0
 
 
 @pytest.mark.parametrize(

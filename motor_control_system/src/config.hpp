@@ -41,13 +41,11 @@ const unsigned long CONTROL_TICK_MS = S_TO_MS(0.02f);
 const unsigned long MAX_COMMAND_MS = S_TO_MS(120.0f); // emergency stop only
 const unsigned long STALL_TIMEOUT_MS = S_TO_MS(3.0f); // abort a command with no odometer progress this long
 
-// PWM ramp: fixed ramp-up duration, fixed ramp-down margin — not a
-// proportional curve. See computeRampedPwm() in main.cpp.
-const unsigned long RAMP_UP_MS = S_TO_MS(5.0f);
-const unsigned long RAMP_DOWN_MS = S_TO_MS(5.0f); // MOVE / ROTATE (time-based)
-const float RAMP_DOWN_DISTANCE_M = 0.05f; // MOVE_DIST
-const float RAMP_DOWN_ANGLE_RAD = DEG_TO_RADIAN(15); // ROTATE_ANGLE
-
 // PWM
 const uint8_t MIN_PWM = 20; // TODO
 const uint8_t MAX_PWM = 160; // 256 is PWM ceiling
+
+// PWM ramp: open-loop velocity trapezoid; see main.cpp.
+const float MAX_ANGULAR_VEL = 480.0f; // rad/s, motor shaft — TODO: seed only, replace via `calibrate.py velocity-curve`
+const float MAX_ANGULAR_ACCEL = 384.0f; // rad/s^2, motor shaft — TODO: hand-tuned seed, refine by feel
+const float PWM_PER_RAD_S = (MAX_PWM - MIN_PWM) / MAX_ANGULAR_VEL; // TODO: seed only, replace via `calibrate.py velocity-curve`

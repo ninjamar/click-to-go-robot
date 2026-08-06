@@ -25,6 +25,7 @@ class IntentKind(Enum):
     MOVE = auto()
     ROTATE = auto()
 
+
 class Intent(NamedTuple):
     """The motion the bridge should be executing right now."""
 
@@ -224,15 +225,8 @@ class BridgeNode(Node):
         now = self.get_clock().now()
         dt = (now - self._last_odom_stamp).nanoseconds * 1e-9
         self._last_odom_stamp = now
-
-        # TODO: Fix encoder A
-        # With encoder A disabled, v1 = 0. To keep the logic, mirror v2.
-        if self._last_intent.kind == IntentKind.ROTATE:
-            v_fwd = 0.0
-            omega = 2.0 * v2 / self._p_track
-        else:
-            v_fwd = v2
-            omega = 0.0
+        v_fwd = (v1 + v2) / 2.0
+        omega = (v2 - v1) / self._p_track
 
         self._pose.x += v_fwd * math.cos(self._pose.theta) * dt
         self._pose.y += v_fwd * math.sin(self._pose.theta) * dt

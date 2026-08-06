@@ -22,9 +22,8 @@ public:
         pinMode(pin2ChB, INPUT_PULLUP);
 
         // ISRs must be free C functions, so _instance lets them reach this object.
-        // TODO: Fix encoder A
-        // enableInterrupt(pin1ChA, isrMotor1, CHANGE);
-        // enableInterrupt(pin1ChB, isrMotor1, CHANGE);
+        enableInterrupt(pin1ChA, isrMotor1, CHANGE);
+        enableInterrupt(pin1ChB, isrMotor1, CHANGE);
 
         // Motor B only has 1 channel
         enableInterrupt(pin2ChA, isrMotor2, CHANGE);

@@ -1,11 +1,13 @@
 """
-Interactive helpers for calibrating GEAR_RATIO, MIN_PWM, PWM_PER_RAD_S, and
-MAX_ANGULAR_VEL. Doesn't write to config.hpp - just prints the measured value
-for you to enter yourself. MAX_ANGULAR_ACCEL has no calibration path here -
-hand-tune it by feel (watch for wheel slip or stall).
+Interactive helpers for calibrating GEAR_RATIO, ENCODER_PULSES_PER_REV_A/B,
+MIN_PWM, PWM_PER_RAD_S, and MAX_ANGULAR_VEL. Doesn't write to config.hpp -
+just prints the measured value for you to enter yourself. MAX_ANGULAR_ACCEL
+has no calibration path here - hand-tune it by feel (watch for wheel slip or
+stall).
 
 Usage (run from motor_control_system/py/):
     python -m scripts.calibrate gear-ratio --port /dev/cu.usbserial-XXXX --wheel-revs 0.25
+    python -m scripts.calibrate ppr --port /dev/cu.usbserial-XXXX --wheel-revs 5 --current-ppr 24
     python -m scripts.calibrate min-pwm --port /dev/cu.usbserial-XXXX --start 30 --stop 150
     python -m scripts.calibrate velocity-curve --port /dev/cu.usbserial-XXXX
 """
@@ -35,6 +37,30 @@ def cmd_gear_ratio(args):
         f"w2={resp.w2:.4f} rad/s over dt={dt:.2f}s -> motor shaft turned {motor_shaft_revs:.3f} rev"
     )
     print(f"GEAR_RATIO ~= {gear_ratio:.3f}")
+    client.close()
+
+
+def cmd_ppr(args):
+    client = SerialClient(args.port, args.baud)
+    input(
+        f"Motor should be unpowered. Ready to hand-turn wheel {args.motor} exactly "
+        f"{args.wheel_revs} revolution(s) in one direction. Press Enter to zero distance..."
+    )
+    client.call(OP.RESET_DIST)
+    input(f"Now turn the wheel {args.wheel_revs} revolution(s), then press Enter...")
+    resp = client.call(OP.POLL_DIST)
+
+    # d1/d2 accumulate regardless of isActive, so this works even though
+    # nothing was ever "commanded" to move - unlike x1/x2.
+    measured_distance = resp.d1 if args.motor == "A" else resp.d2
+    true_distance = args.wheel_revs * 2 * math.pi * args.wheel_radius
+    ppr = args.current_ppr * measured_distance / true_distance
+
+    print(
+        f"measured {measured_distance:.4f} m over {args.wheel_revs} true wheel rev(s) "
+        f"({true_distance:.4f} m at wheel-radius={args.wheel_radius})"
+    )
+    print(f"ENCODER_PULSES_PER_REV_{args.motor} ~= {ppr:.2f}")
     client.close()
 
 
@@ -119,9 +145,33 @@ def main():
     )
     p_gear.set_defaults(func=cmd_gear_ratio)
 
+    p_ppr = sub.add_parser(
+        "ppr", help="Calibrate ENCODER_PULSES_PER_REV_A/B", parents=[common]
+    )
+    p_ppr.add_argument(
+        "--wheel-revs",
+        type=float,
+        default=5.0,
+        help="Wheel revolutions you'll hand-turn",
+    )
+    p_ppr.add_argument(
+        "--wheel-radius",
+        type=float,
+        default=0.04,
+        help="WHEEL_RADIUS_M from config.hpp",
+    )
+    p_ppr.add_argument(
+        "--current-ppr",
+        type=float,
+        required=True,
+        help="Current ENCODER_PULSES_PER_REV_A/B value from config.hpp, used as the fit anchor",
+    )
+    p_ppr.add_argument("--motor", choices=["A", "B"], default="A")
+    p_ppr.set_defaults(func=cmd_ppr)
+
     p_min = sub.add_parser("min-pwm", help="Find MIN_PWM", parents=[common])
     p_min.add_argument("--start", type=int, default=20)
-    p_min.add_argument("--stop", type=int, default=150)
+    p_min.add_argument("--stop", type=int, default=255)
     p_min.add_argument("--step", type=int, default=5)
     p_min.add_argument(
         "--hold", type=float, default=1.0, help="Seconds to hold each PWM level"

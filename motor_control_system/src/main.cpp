@@ -123,7 +123,28 @@ void sendVelocityResponse(const CommandPacket& pk, ResponseStatus status) {
     serialProtocol.sendResponse(pk, status, isActive, w1, w2, v1, v2, linearDistanceA, linearDistanceB, linearDisplacementA, linearDisplacementB);
 }
 
+// DEBUG: periodic pulse counts, to check whether motor A's live CH_A drops
+// out in one direction. Remove once the encoder issue is resolved.
+// void printDebugCounts() {
+//     static unsigned long lastDebugPrint = 0;
+//     unsigned long now = millis();
+//     if (now - lastDebugPrint < 250) {
+//         return;
+//     }
+//     lastDebugPrint = now;
+
+//     unsigned long c1;
+//     unsigned long c2;
+//     odometerDriver.debugCounts(c1, c2);
+//     Serial.print("encA chA=");
+//     Serial.print(c1);
+//     Serial.print("  encB chA=");
+//     Serial.println(c2);
+// }
+
 void loop() {
+    // printDebugCounts();
+
     // Intake
     CommandPacket packet;
     if (serialProtocol.readCommand(packet)) {

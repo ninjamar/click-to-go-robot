@@ -22,14 +22,26 @@ public:
         pinMode(pin2ChB, INPUT_PULLUP);
 
         // ISRs must be free C functions, so _instance lets them reach this object.
+        // Motor A's CH_B drops out under load (unresolved hardware fault); only CH_A is live.
         enableInterrupt(pin1ChA, isrMotor1, CHANGE);
-        enableInterrupt(pin1ChB, isrMotor1, CHANGE);
+        // enableInterrupt(pin1ChB, isrMotor1, CHANGE);
 
         // Motor B only has 1 channel
         enableInterrupt(pin2ChA, isrMotor2, CHANGE);
         // enableInterrupt(pin2ChB, isrMotor2, CHANGE);
 
         lastPollTime = millis();
+    }
+
+    // DEBUG: pulse counts since the last call, to check whether motor A's
+    // live CH_A drops out in one direction. Doesn't touch count1/count2.
+    void debugCounts(unsigned long& c1, unsigned long& c2) {
+        noInterrupts();
+        c1 = debugCount1;
+        c2 = debugCount2;
+        debugCount1 = 0;
+        debugCount2 = 0;
+        interrupts();
     }
 
     // dtSec is the real elapsed time covered, so callers can recover exact angle as w * dtSec.
@@ -67,6 +79,10 @@ private:
     volatile unsigned long count1 = 0;
     volatile unsigned long count2 = 0;
 
+    // Shadow copies of the above, for debugCounts() only.
+    volatile unsigned long debugCount1 = 0;
+    volatile unsigned long debugCount2 = 0;
+
     unsigned long lastPollTime = 0;
 
     // static means method/field is tied to class not instance
@@ -83,10 +99,12 @@ private:
 
     void handleMotor1() {
         count1++;
+        debugCount1++;
     }
 
     void handleMotor2() {
         count2++;
+        debugCount2++;
     }
 
     static void isrMotor1() {

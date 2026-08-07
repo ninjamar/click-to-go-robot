@@ -28,7 +28,7 @@ const int ENCODER_MOTORB_CH_A_PIN = 11;
 const int ENCODER_MOTORB_CH_B_PIN = 12;
 
 // PPR = blades (12) * 2 edges(hi/lo) / blade * # of active channels.
-const uint8_t ENCODER_PULSES_PER_REV_A = 48;
+const uint8_t ENCODER_PULSES_PER_REV_A = 24; // Motor A; CH_B drops out under load, only CH_A is enabled
 const uint8_t ENCODER_PULSES_PER_REV_B = 24; // Motor B; only CH_A is physically connected
 
 // Geometry — convert encoder pulses into wheel/chassis displacement.
@@ -42,10 +42,10 @@ const unsigned long MAX_COMMAND_MS = S_TO_MS(120.0f); // emergency stop only
 const unsigned long STALL_TIMEOUT_MS = S_TO_MS(3.0f); // abort a command with no odometer progress this long
 
 // PWM
-const uint8_t MIN_PWM = 20; // TODO
-const uint8_t MAX_PWM = 160; // 256 is PWM ceiling
+const uint8_t MIN_PWM = 35; // TODO
+const uint8_t MAX_PWM = 100; // 255 is PWM ceiling
 
 // PWM ramp: open-loop velocity trapezoid; see main.cpp.
-const float MAX_ANGULAR_VEL = 480.0f; // rad/s, motor shaft — TODO: seed only, replace via `calibrate.py velocity-curve`
-const float MAX_ANGULAR_ACCEL = 384.0f; // rad/s^2, motor shaft — TODO: hand-tuned seed, refine by feel
-const float PWM_PER_RAD_S = (MAX_PWM - MIN_PWM) / MAX_ANGULAR_VEL; // TODO: seed only, replace via `calibrate.py velocity-curve`
+const float MAX_ANGULAR_VEL = 545.415f; // rad/s, motor shaft; `calibrate.py velocity-curve`
+const float MAX_ANGULAR_ACCEL = 200.0f; // rad/s^2, motor shaft — TODO: hand-tuned seed, refine by feel
+const float PWM_PER_RAD_S = 0.07944f; // (MAX_PWM - MIN_PWM) / MAX_ANGULAR_VEL; // calibrate.py velocity-curve

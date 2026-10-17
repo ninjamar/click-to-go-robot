@@ -222,22 +222,18 @@ void loop() {
                 shaftRadPerUnit = 1.0f;
                 done = accumulatedRad >= targetRad;
             } else {
-                float dsA = w1 * dt / GEAR_RATIO * WHEEL_RADIUS_M;
+                // Encoder A is unusable under motor drive; B is the only odometry source.
                 float dsB = w2 * dt / GEAR_RATIO * WHEEL_RADIUS_M;
 
                 if (activeCommand.operation == OP_QUEUE_MOVE_DIST) {
-                    // Average only over channels with data
-                    // float divisor = ((dsA != 0.0f) ? 1.0f : 0.0f) + ((dsB != 0.0f) ? 1.0f : 0.0f);
-                    // if (divisor > 0.0f) {
-                    //     accumulatedM += fabsf((dsA + dsB) / divisor);
-                    // }
-                    accumulatedM += fabsf((dsA + dsB) / 2.0f); // Assume two encoders
+                    accumulatedM += fabsf(dsB);
 
                     remaining = activeCommand.arg - accumulatedM;
                     shaftRadPerUnit = GEAR_RATIO / WHEEL_RADIUS_M;
                     done = accumulatedM >= activeCommand.arg;
                 } else { // OP_QUEUE_ROTATE_ANGLE
-                    accumulatedRad += fabsf((dsB - dsA) / TRACK_WIDTH_M);
+                    // In-place spin: both wheels cover the same arc, so B alone gives the angle.
+                    accumulatedRad += fabsf(dsB) * 2.0f / TRACK_WIDTH_M;
                     remaining = activeCommand.arg - accumulatedRad;
                     shaftRadPerUnit = (TRACK_WIDTH_M / 2.0f) * GEAR_RATIO / WHEEL_RADIUS_M;
                     done = accumulatedRad >= activeCommand.arg;

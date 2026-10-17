@@ -9,18 +9,20 @@ public:
         : _motors(pinEnA, pinIN1_A, pinIN2_A, pinEnB, pinIN1_B, pinIN2_B) {
     }
 
-    // Sets both motors to the same direction at the given duty cycle.
+    // Sets both motors to the same direction, each at its own duty cycle.
     // No internal timing — caller (main.cpp's control tick) is the sole
     // authority on when to stop; this just applies "right now".
-    void driveMove(int8_t direction, uint8_t pwm) {
+    void driveMove(int8_t direction, uint8_t pwmA, uint8_t pwmB) {
         applyDirection(direction, /*opposite=*/false);
-        _motors.setSpeed(pwm);
+        _motors.setSpeedA(pwmA);
+        _motors.setSpeedB(pwmB);
     }
 
-    void driveRotate(int8_t direction, uint8_t pwm) {
+    void driveRotate(int8_t direction, uint8_t pwmA, uint8_t pwmB) {
         // In-place rotation
         applyDirection(direction, /*opposite=*/true);
-        _motors.setSpeed(pwm);
+        _motors.setSpeedA(pwmA);
+        _motors.setSpeedB(pwmB);
     }
 
     void stop() {

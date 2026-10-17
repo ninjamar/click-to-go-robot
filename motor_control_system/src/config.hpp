@@ -49,3 +49,7 @@ const uint8_t MAX_PWM = 100; // 255 is PWM ceiling
 const float MAX_ANGULAR_VEL = 545.415f; // rad/s, motor shaft; `calibrate.py velocity-curve`
 const float MAX_ANGULAR_ACCEL = 200.0f; // rad/s^2, motor shaft — TODO: hand-tuned seed, refine by feel
 const float PWM_PER_RAD_S = 0.07944f; // (MAX_PWM - MIN_PWM) / MAX_ANGULAR_VEL; // calibrate.py velocity-curve
+
+// Per-wheel PWM correction per meter of lead/lag between wheels, during
+// KIND_DISTANCE moves only. TODO: hand-tune by feel (like MAX_ANGULAR_ACCEL).
+const float SYNC_KP_PWM_PER_M = 40.0f;

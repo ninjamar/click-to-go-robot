@@ -195,10 +195,12 @@ just mcs-send-command "move:1,poll_w" --port /dev/cu.usbserial-XXXX
   `ROTATE_ANGLE`. On completion it re-issues the current intent, so motion is a
   rapid stream of small queued commands.
 - `STOP` intent interrupts immediately.
-- Polls `OP_POLL_DIST` at 10 Hz when idle so `/odom` never stalls (SLAM/Nav2
-  require a continuous stream).
-- Integrates `v1/v2` into a dead-reckoned pose, publishes `/odom` and the
-  **odom→base_link** TF. SLAM Toolbox supplies the **map→odom** correction.
+- Polls `OP_POLL_DIST` at 10 Hz when idle, and after every slice completion or
+  `STOP` ACK (those responses carry no odometry).
+- Integrates the change in the firmware's cumulative `x2` (wheel B only; encoder A
+  is out) into a dead-reckoned pose: forward distance for a MOVE slice, chassis
+  angle `2·Δx2 / track_width` for a ROTATE slice. Republishes `/odom` and the
+  **odom→base_link** TF at 20 Hz. SLAM Toolbox supplies the **map→odom** correction.
 
 **`controller_node.py`** — subscribes `/goal_pose` (RViz "2D Nav Goal"), drives
 Nav2's `NavigateToPose` action, and hard-cancels if `/scan` shows something closer

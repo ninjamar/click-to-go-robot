@@ -30,7 +30,7 @@ class Intent(NamedTuple):
     """The motion the bridge should be executing right now."""
 
     kind: IntentKind
-    direction: int = 0  # -1 (backward/CW) or 1 (forward/CCW); unused for STOP
+    direction: int = 0  # firmware direction, -1 or 1; unused for STOP
 
 
 @dataclass
@@ -82,7 +82,12 @@ class BridgeNode(Node):
         self._expect_intake = (
             False  # True after sending a queued command, until intake ACK
         )
+        self._inflight_is_poll = False  # the in-flight command is an OP_POLL_DIST
         self._last_intent = Intent(IntentKind.STOP)
+        self._motion: Intent | None = None  # last queued command; attributes x2 deltas
+        self._last_x2: float | None = None  # firmware's cumulative signed displacement
+        self._v_fwd = 0.0
+        self._omega = 0.0
 
         # Pose accumulates from wheel encoder data (dead-reckoning).
         # SLAM Toolbox corrects the drift via the map→odom TF transform.
@@ -110,6 +115,7 @@ class BridgeNode(Node):
             0.05, self._drain_responses
         )  # 20 Hz — process serial responses
         self.create_timer(0.10, self._idle_poll)  # 10 Hz — keep odom live when stopped
+        self.create_timer(0.05, self._republish_odom)  # 20 Hz — keep odom TF fresh
 
     # ── serial responses ────────────────────────────────────────────────────────
 
@@ -134,12 +140,13 @@ class BridgeNode(Node):
             self._expect_intake = False
             return
 
-        # Terminal response: a POLL result, STOP ACK, or queued command completion.
-        # Always integrate — even zero velocities must publish to keep the odom TF
-        # alive for SLAM Toolbox. Completion responses carry v1=v2=0 (firmware uses
-        # sendStatus, not a full data response), so they momentarily report zero speed,
-        # which is harmless since the next slice starts immediately after.
-        self._integrate_odom(resp.v1, resp.v2)
+        if not self._inflight_is_poll:
+            # Completion and STOP ACK responses carry no odometry (all zeros), so read
+            # the cumulative displacement with a poll before dispatching the next slice.
+            self._send_poll()
+            return
+
+        self._integrate_displacement(resp.x2)
 
         self._state = BridgeState.IDLE
         self._inflight_seq = None
@@ -154,7 +161,9 @@ class BridgeNode(Node):
         angular velocity takes priority over linear.
         """
         if abs(twist.angular.z) > self._p_ang_thresh:
-            return Intent(IntentKind.ROTATE, 1 if twist.angular.z > 0 else -1)
+            # Firmware ROTATE +1 drives the left wheel forward and the right back
+            # (clockwise), so counter-clockwise (angular.z > 0) is -1.
+            return Intent(IntentKind.ROTATE, -1 if twist.angular.z > 0 else 1)
         if abs(twist.linear.x) > self._p_lin_thresh:
             return Intent(IntentKind.MOVE, 1 if twist.linear.x > 0 else -1)
         return Intent(IntentKind.STOP)
@@ -168,20 +177,27 @@ class BridgeNode(Node):
                 seq = self._serial.send(
                     OP.QUEUE_MOVE_DIST, self._p_slice_dist, intent.direction
                 )
+                self._motion = intent
                 self._arm_inflight(seq, queued=True)
             case IntentKind.ROTATE:
                 seq = self._serial.send(
                     OP.QUEUE_ROTATE_ANGLE, self._p_slice_angle, intent.direction
                 )
+                self._motion = intent
                 self._arm_inflight(seq, queued=True)
             case IntentKind.STOP:
                 pass  # already stopped; nothing to send
 
-    def _arm_inflight(self, seq: int, queued: bool) -> None:
+    def _arm_inflight(self, seq: int, queued: bool, poll: bool = False) -> None:
         """Mark a command as in-flight and configure whether to expect an intake ACK."""
         self._inflight_seq = seq
         self._expect_intake = queued
+        self._inflight_is_poll = poll
         self._state = BridgeState.IN_FLIGHT
+
+    def _send_poll(self) -> None:
+        seq = self._serial.send(OP.POLL_DIST)
+        self._arm_inflight(seq, queued=False, poll=True)
 
     def _on_cmd_vel(self, msg: Twist) -> None:
         """Subscription callback: called by the executor whenever Nav2 sends a velocity.
@@ -210,29 +226,48 @@ class BridgeNode(Node):
         spontaneous responses, so we poll explicitly to keep the topic alive.
         """
         if self._state == BridgeState.IDLE:
-            seq = self._serial.send(OP.POLL_DIST)
-            self._arm_inflight(seq, queued=False)
+            self._send_poll()
 
     # ── odometry ────────────────────────────────────────────────────────────────
 
-    def _integrate_odom(self, v1: float, v2: float) -> None:
-        """Update the dead-reckoning pose from the latest wheel velocities.
+    def _integrate_displacement(self, x2: float) -> None:
+        """Update the dead-reckoning pose from the firmware's cumulative displacement.
 
-        v1/v2 are signed linear wheel velocities (m/s) from the firmware.
-        Differential drive kinematics convert per-wheel values to robot-level
-        forward velocity and angular rate, which are then integrated into a 2D pose.
+        x2 is wheel B's signed cumulative distance (m), signed by command direction.
+        Encoder A is unusable, so B alone gives the slice's motion: forward distance
+        for a MOVE, and the chassis angle (both wheels cover the same arc) for a
+        ROTATE. The firmware only accumulates while a command is active, so idle
+        polls yield a zero delta.
         """
         now = self.get_clock().now()
         dt = (now - self._last_odom_stamp).nanoseconds * 1e-9
         self._last_odom_stamp = now
-        v_fwd = (v1 + v2) / 2.0
-        omega = (v2 - v1) / self._p_track
 
-        self._pose.x += v_fwd * math.cos(self._pose.theta) * dt
-        self._pose.y += v_fwd * math.sin(self._pose.theta) * dt
-        self._pose.theta += omega * dt
+        dx = 0.0 if self._last_x2 is None else x2 - self._last_x2
+        self._last_x2 = x2
 
-        self._publish_odom(v_fwd, omega, now)
+        dist = 0.0
+        dtheta = 0.0
+        if self._motion is not None:
+            if self._motion.kind == IntentKind.MOVE:
+                dist = dx
+            elif self._motion.kind == IntentKind.ROTATE:
+                dtheta = -dx * 2.0 / self._p_track  # +x2 is clockwise
+
+        # Midpoint heading keeps the arc of a slice from skewing the pose.
+        mid = self._pose.theta + dtheta / 2.0
+        self._pose.x += dist * math.cos(mid)
+        self._pose.y += dist * math.sin(mid)
+        self._pose.theta += dtheta
+
+        if dt > 0.0:
+            self._v_fwd = dist / dt
+            self._omega = dtheta / dt
+
+    def _republish_odom(self) -> None:
+        """Timer callback: republish the held pose so the odom TF never goes stale
+        while a slice is running."""
+        self._publish_odom(self._v_fwd, self._omega, self.get_clock().now())
 
     def _publish_odom(self, v_fwd: float, omega: float, stamp) -> None:
         """Publish the current pose as both an Odometry message and a TF transform.

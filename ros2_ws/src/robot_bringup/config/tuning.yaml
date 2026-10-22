@@ -7,10 +7,11 @@
 
 motor_control_bridge:
   ros__parameters:
-    slice_distance: 0.05  # m per forward/backward firmware command
-    slice_angle: 0.10     # rad per in-place rotation firmware command
-    angular_threshold: 0.05  # rad/s; below this, angular intent is treated as zero
-    linear_threshold: 0.02   # m/s; below this, linear intent is treated as zero
+    slice_distance: 0.20  # m per forward/backward firmware command
+    slice_angle: 0.30     # rad per in-place rotation firmware command
+    angular_threshold: 0.05  # rad/s; below this, the angular component is dropped
+    linear_threshold: 0.02   # m/s; below this, the linear component is dropped
+    cmd_vel_timeout: 0.5     # s; stop dispatching if /cmd_vel goes quiet this long
 
 slam_toolbox:
   ros__parameters:
@@ -18,7 +19,7 @@ slam_toolbox:
     odom_frame: odom
     map_frame: map
     base_frame: base_link
-    scan_topic: /scan
+    scan_topic: /scan_filtered
     mode: mapping
     debug_logging: false
     throttle_scans: 1
@@ -295,7 +296,7 @@ collision_monitor:
     observation_sources: ["scan"]
     scan:
       type: "scan"
-      topic: "scan"
+      topic: "scan_filtered"
       min_height: 0.15
       max_height: 2.0
       enabled: true
@@ -312,14 +313,14 @@ local_costmap:
       width: 3
       height: 3
       resolution: 0.05
-      robot_radius: 0.15  # mirrors hardware.yaml track_width — TODO: measure
+      robot_radius: 0.174  # centre of rotation to farthest edge, measured
       plugins: ["obstacle_layer", "inflation_layer"]
       obstacle_layer:
         plugin: "nav2_costmap_2d::ObstacleLayer"
         enabled: true
         observation_sources: scan
         scan:
-          topic: /scan
+          topic: /scan_filtered
           max_obstacle_height: 2.0
           clearing: true
           marking: true
@@ -342,7 +343,7 @@ global_costmap:
       publish_frequency: 1.0
       global_frame: map
       robot_base_frame: base_link
-      robot_radius: 0.15  # mirrors hardware.yaml — TODO: measure
+      robot_radius: 0.174  # centre of rotation to farthest edge, measured
       resolution: 0.05
       track_unknown_space: true
       plugins: ["static_layer", "obstacle_layer", "inflation_layer"]
@@ -354,7 +355,7 @@ global_costmap:
         enabled: true
         observation_sources: scan
         scan:
-          topic: /scan
+          topic: /scan_filtered
           max_obstacle_height: 2.0
           clearing: true
           marking: true

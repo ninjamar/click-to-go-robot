@@ -17,6 +17,9 @@ setup(
     description="TODO: Package description",
     license="TODO: License declaration",
     entry_points={
-        "console_scripts": ["controller_node = robot_controller.controller_node:main"],
+        "console_scripts": [
+            "controller_node = robot_controller.controller_node:main",
+            "scan_filter_node = robot_controller.scan_filter_node:main",
+        ],
     },
 )

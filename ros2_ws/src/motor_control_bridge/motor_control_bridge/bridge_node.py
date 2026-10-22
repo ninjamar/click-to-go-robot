@@ -12,6 +12,14 @@ from rclpy.node import Node
 
 from motor_control_bridge.serial_transport import MotorSerial
 
+# Demand is tracked in slices; dispatch fires once one kind is this far behind,
+# and the backlog is capped so a slow robot doesn't build up unbounded motion.
+_MIN_DEMAND_SLICES = 0.5
+_MAX_DEMAND_SLICES = 2.0
+_MAX_DEMAND_DT = 0.5  # s; longest gap integrated into demand
+
+
+
 # ── types ──────────────────────────────────────────────────────────────────────
 
 
@@ -62,6 +70,7 @@ class BridgeNode(Node):
         self.declare_parameter("angular_threshold", 0.05)
         self.declare_parameter("linear_threshold", 0.02)
         self.declare_parameter("track_width", 0.15)
+        self.declare_parameter("cmd_vel_timeout", 0.5)
 
         # Cache parameters — these are set at launch and won't change at runtime,
         # so reading them once avoids repeated get_parameter() calls in hot paths.
@@ -70,6 +79,7 @@ class BridgeNode(Node):
         self._p_ang_thresh = self.get_parameter("angular_threshold").value
         self._p_lin_thresh = self.get_parameter("linear_threshold").value
         self._p_track = self.get_parameter("track_width").value
+        self._p_cmd_timeout = self.get_parameter("cmd_vel_timeout").value
 
         self._serial = MotorSerial(
             self.get_parameter("serial_port").value,
@@ -83,7 +93,11 @@ class BridgeNode(Node):
             False  # True after sending a queued command, until intake ACK
         )
         self._inflight_is_poll = False  # the in-flight command is an OP_POLL_DIST
-        self._last_intent = Intent(IntentKind.STOP)
+        self._twist: Twist | None = None  # latest non-zero /cmd_vel; None = stopped
+        self._twist_stamp = self.get_clock().now()
+        self._demand_stamp = None  # last time demand was integrated
+        self._demand_move = 0.0  # signed slices of distance Nav2 has asked for
+        self._demand_turn = 0.0  # signed slices of angle (CCW positive)
         self._motion: Intent | None = None  # last queued command; attributes x2 deltas
         self._last_x2: float | None = None  # firmware's cumulative signed displacement
         self._v_fwd = 0.0
@@ -150,28 +164,66 @@ class BridgeNode(Node):
 
         self._state = BridgeState.IDLE
         self._inflight_seq = None
-        self._dispatch(self._last_intent)
+        self._dispatch()
 
     # ── motion dispatch ─────────────────────────────────────────────────────────
 
-    def _compute_intent(self, twist: Twist) -> Intent:
-        """Translate a continuous velocity command into a discrete motion intent.
+    def _clear_demand(self) -> None:
+        self._demand_stamp = None
+        self._demand_move = 0.0
+        self._demand_turn = 0.0
 
-        Because the firmware can only move or rotate (not both simultaneously),
-        angular velocity takes priority over linear.
+    def _next_intent(self) -> Intent:
+        """Pick the next slice that best approximates the current velocity command.
+
+        The firmware can only move or rotate, so a Twist that mixes both is split
+        into alternating slices. Each call accrues the distance and angle the Twist
+        has asked for since the last call, then pays out whichever is further behind.
         """
-        if abs(twist.angular.z) > self._p_ang_thresh:
-            # Firmware ROTATE +1 drives the left wheel forward and the right back
-            # (clockwise), so counter-clockwise (angular.z > 0) is -1.
-            return Intent(IntentKind.ROTATE, -1 if twist.angular.z > 0 else 1)
-        if abs(twist.linear.x) > self._p_lin_thresh:
-            return Intent(IntentKind.MOVE, 1 if twist.linear.x > 0 else -1)
-        return Intent(IntentKind.STOP)
+        now = self.get_clock().now()
+        timed_out = (now - self._twist_stamp).nanoseconds * 1e-9 > self._p_cmd_timeout
+        if self._twist is None or timed_out:
+            self._clear_demand()
+            return Intent(IntentKind.STOP)
 
-    def _dispatch(self, intent: Intent) -> None:
-        """Issue the next firmware command for the given intent, if the bridge is idle."""
+        dt = 0.0
+        if self._demand_stamp is not None:
+            dt = min((now - self._demand_stamp).nanoseconds * 1e-9, _MAX_DEMAND_DT)
+        self._demand_stamp = now
+        self._demand_move += self._twist.linear.x * dt / self._p_slice_dist
+        self._demand_turn += self._twist.angular.z * dt / self._p_slice_angle
+
+        # Credit is progress toward the commanded direction; it may go negative after
+        # a slice overshoots the demand, so total motion tracks the Twist.
+        sm = math.copysign(1.0, self._twist.linear.x) if self._twist.linear.x else 0.0
+        st = math.copysign(1.0, self._twist.angular.z) if self._twist.angular.z else 0.0
+        move, turn = self._demand_move * sm, self._demand_turn * st
+
+        # Scale both down together so the move/turn ratio survives the cap.
+        peak = max(abs(self._demand_move), abs(self._demand_turn))
+        if peak > _MAX_DEMAND_SLICES:
+            scale = _MAX_DEMAND_SLICES / peak
+            self._demand_move *= scale
+            self._demand_turn *= scale
+            move *= scale
+            turn *= scale
+
+        if max(move, turn) < _MIN_DEMAND_SLICES:
+            return Intent(IntentKind.STOP)
+
+        if move >= turn:
+            self._demand_move -= sm
+            return Intent(IntentKind.MOVE, int(sm))
+
+        # Firmware ROTATE +1 turns the robot counter-clockwise (verified on the robot).
+        self._demand_turn -= st
+        return Intent(IntentKind.ROTATE, int(st))
+
+    def _dispatch(self) -> None:
+        """Issue the next firmware command for the current velocity command, if idle."""
         if self._state != BridgeState.IDLE:
             return
+        intent = self._next_intent()
         match intent.kind:
             case IntentKind.MOVE:
                 seq = self._serial.send(
@@ -206,17 +258,29 @@ class BridgeNode(Node):
         Nav2 streams this at ~10-20 Hz; each message is the desired velocity right now,
         not a queued movement to complete.
         """
-        intent = self._compute_intent(msg)
-        self._last_intent = intent
+        stopped = (
+            abs(msg.linear.x) <= self._p_lin_thresh
+            and abs(msg.angular.z) <= self._p_ang_thresh
+        )
+        if stopped:
+            self._twist = None
+            self._clear_demand()
+        else:
+            # Components inside their dead zone are dropped so noise doesn't rotate us.
+            twist = Twist()
+            twist.linear.x = msg.linear.x if abs(msg.linear.x) > self._p_lin_thresh else 0.0
+            twist.angular.z = msg.angular.z if abs(msg.angular.z) > self._p_ang_thresh else 0.0
+            self._twist = twist
+            self._twist_stamp = self.get_clock().now()
 
-        if intent.kind == IntentKind.STOP and self._state == BridgeState.IN_FLIGHT:
+        if stopped and self._state == BridgeState.IN_FLIGHT:
             # Interrupt the active command immediately. STOP is not queued on the
             # firmware side — it executes instantly and does NOT send a completion
             # for the aborted command, only a STOP acknowledgement.
             seq = self._serial.send(OP.STOP)
             self._arm_inflight(seq, queued=False)
         elif self._state == BridgeState.IDLE:
-            self._dispatch(intent)
+            self._dispatch()
 
     def _idle_poll(self) -> None:
         """Timer callback: request fresh odometry when the bridge is idle.
@@ -252,7 +316,7 @@ class BridgeNode(Node):
             if self._motion.kind == IntentKind.MOVE:
                 dist = dx
             elif self._motion.kind == IntentKind.ROTATE:
-                dtheta = -dx * 2.0 / self._p_track  # +x2 is clockwise
+                dtheta = dx * 2.0 / self._p_track  # +x2 is counter-clockwise
 
         # Midpoint heading keeps the arc of a slice from skewing the pose.
         mid = self._pose.theta + dtheta / 2.0

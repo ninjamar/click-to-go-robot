@@ -3,7 +3,7 @@ Generate hardware.yaml from config.hpp via a real libclang parse.
 
 Extracts BAUD_RATE and TRACK_WIDTH_M from the firmware and renders them into
 ros2_ws/src/robot_bringup/config/hardware.yaml alongside the non-firmware constants
-(serial_port, emergency_stop_distance) that are hardcoded here.
+(serial_port, emergency_stop_distance, scan_min_range) that are hardcoded here.
 
 Usage: just generate-config (requires compile_commands.json - run `pio run -t compiledb` first)
 """
@@ -59,8 +59,8 @@ def render(baud_rate: int, track_width: float) -> str:
 # baud_rate and track_width are extracted from config.hpp by generate_hardware_config.py.
 # Run `just generate-config` to regenerate after changing config.hpp.
 #
-# emergency_stop_distance is not in config.hpp.
-# To change it, edit the render() function in generate_hardware_config.py and regenerate.
+# emergency_stop_distance and scan_min_range are not in config.hpp.
+# To change them, edit the render() function in generate_hardware_config.py and regenerate.
 #
 # serial_port is not set here — robot.launch.py detects it at launch time via
 # detect_serial_ports(), since USB enumeration order isn't stable across replugs.
@@ -73,6 +73,10 @@ motor_control_bridge:
 robot_controller:
   ros__parameters:
     emergency_stop_distance: 0.30  # meters
+
+scan_filter:
+  ros__parameters:
+    scan_min_range: 0.27  # meters; lidar returns closer than this are the robot's own body
 """
 
 

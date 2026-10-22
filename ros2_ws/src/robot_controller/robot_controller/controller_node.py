@@ -29,10 +29,10 @@ class ControllerNode(Node):
         # sends one PoseStamped — a position + orientation tagged with a coordinate frame.
         self.create_subscription(PoseStamped, "/goal_pose", self._on_goal, 10)
 
-        # /scan is the raw lidar output — an array of distance readings at evenly-spaced
+        # /scan_filtered is the lidar output — an array of distance readings at evenly-spaced
         # angles around the robot. Used here only as a last-resort safety check;
         # Nav2's local costmap handles normal obstacle avoidance.
-        self.create_subscription(LaserScan, "/scan", self._on_scan, 10)
+        self.create_subscription(LaserScan, "/scan_filtered", self._on_scan, 10)
 
     def _on_goal(self, msg: PoseStamped) -> None:
         """Subscription callback: called whenever a new navigation goal arrives."""

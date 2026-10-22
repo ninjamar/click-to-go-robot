@@ -48,13 +48,13 @@ def _launch_setup(context, *args, **kwargs):
             {"angle_crop_max": 225.0},
         ],
     )
-    # Lidar is physically flipped 180° about the robot's forward axis (roll),
-    # so base_laser's axes no longer align with base_link's — roll=pi corrects it.
+    # Lidar is mounted upside-down (roll=pi) and its 0° points at the robot's back
+    # (verified by driving forward: the 0° range grew), so yaw=pi too.
     lidar_tf = Node(
         package="tf2_ros",
         executable="static_transform_publisher",
         name="base_link_to_base_laser_ld14p",
-        arguments=["0", "0", "0.18", "0", "0", "3.14159265", "base_link", "base_laser"],
+        arguments=["0", "0", "0.18", "3.14159265", "0", "3.14159265", "base_link", "base_laser"],
     )
 
     # SLAM Toolbox: matches /scan against the growing map to build /map and publish
@@ -99,6 +99,15 @@ def _launch_setup(context, *args, **kwargs):
         output="screen",
     )
 
+    # Scan filter: /scan -> /scan_filtered with the robot's own body removed; SLAM,
+    # Nav2, collision monitor and the controller all read the filtered topic.
+    scan_filter = Node(
+        package="robot_controller",
+        executable="scan_filter_node",
+        parameters=[hardware_params],
+        output="screen",
+    )
+
     # Controller: accepts /goal_pose from RViz2 and drives Nav2's NavigateToPose action.
     controller = Node(
         package="robot_controller",
@@ -107,7 +116,7 @@ def _launch_setup(context, *args, **kwargs):
         output="screen",
     )
 
-    return [lidar_node, lidar_tf, slam, nav2, bridge, controller]
+    return [lidar_node, lidar_tf, scan_filter, slam, nav2, bridge, controller]
 
 
 def generate_launch_description():

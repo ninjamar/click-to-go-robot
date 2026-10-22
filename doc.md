@@ -122,7 +122,7 @@ This is **open-loop**: measured ω is reported but never feeds back into the PWM
 
 | Constant | Meaning |
 |---|---|
-| `WHEEL_RADIUS_M`, `GEAR_RATIO` (64), `TRACK_WIDTH_M` (0.15) | wheel + chassis geometry |
+| `WHEEL_RADIUS_M`, `GEAR_RATIO` (64), `TRACK_WIDTH_M` (0.334) | wheel + chassis geometry |
 | `ENCODER_PULSES_PER_REV_A/B` (24) | single-channel PPR (12 blades × 2 edges) |
 | `MIN_PWM` (35), `MAX_PWM` (100) | actuator bounds (255 is the hardware ceiling) |
 | `MAX_ANGULAR_VEL`, `MAX_ANGULAR_ACCEL`, `PWM_PER_RAD_S` | ramp shape and ω→PWM fit |
@@ -184,17 +184,21 @@ just mcs-send-command "move:1,poll_w" --port /dev/cu.usbserial-XXXX
 |---|---|
 | `robot_bringup` | `launch/robot.launch.py` (whole stack), `config/hardware.yaml` + `config/tuning.yaml`, `detect_ports.py` |
 | `motor_control_bridge` | `bridge_node.py` (ROS2 ↔ serial), `serial_transport.py` (`MotorSerial` — background reader thread, packet framing) |
-| `robot_controller` | `controller_node.py` — goal handling + safety backstop |
+| `robot_controller` | `controller_node.py` (goal handling + safety backstop), `scan_filter_node.py` (own-body filter) |
 | `ldlidar_sl_ros2` | git **submodule**, the LD14P lidar driver, publishes `/scan` |
 
 **`bridge_node.py`** — an `IDLE` / `IN_FLIGHT` state machine.
 
-- Subscribes `/cmd_vel`. The firmware can only move *or* rotate, so each Twist
-  becomes a discrete **intent** (angular before linear) issued as one **sliced**
-  command: `slice_distance` (0.05 m) per `MOVE_DIST`, `slice_angle` (0.1 rad) per
-  `ROTATE_ANGLE`. On completion it re-issues the current intent, so motion is a
-  rapid stream of small queued commands.
-- `STOP` intent interrupts immediately.
+- Subscribes `/cmd_vel`. The firmware can only move *or* rotate, so a Twist is
+  split into alternating **slices**: `slice_distance` (0.20 m) per `MOVE_DIST`,
+  `slice_angle` (0.30 rad) per `ROTATE_ANGLE`. The bridge accrues the distance and
+  angle the Twist has asked for, and each time it is free it dispatches whichever
+  is further behind, so a mixed `(v, ω)` becomes interleaved slices in proportion.
+  Components below `linear_threshold`/`angular_threshold` are dropped as noise.
+- A zero Twist interrupts immediately, and the bridge stops dispatching if no
+  `/cmd_vel` arrives within `cmd_vel_timeout` (0.5 s).
+- ROTATE direction +1 is counter-clockwise (verified on the robot), matching the
+  sign of `angular.z`.
 - Polls `OP_POLL_DIST` at 10 Hz when idle, and after every slice completion or
   `STOP` ACK (those responses carry no odometry).
 - Integrates the change in the firmware's cumulative `x2` (wheel B only; encoder A
@@ -207,6 +211,13 @@ Nav2's `NavigateToPose` action, and hard-cancels if `/scan` shows something clos
 than `emergency_stop_distance` (0.30 m). Normal avoidance is Nav2's job; this is a
 last resort.
 
+**`scan_filter_node.py`** — republishes `/scan` as `/scan_filtered` with returns closer
+than `scan_min_range` (0.27 m) set to NaN. Those are the robot's own wheels/mounts
+(0.19-0.23 m); without the filter they end up in the SLAM map and the costmaps, the
+robot starts inside an inscribed zone, and Nav2 can't plan. SLAM Toolbox has no
+minimum range, so this is done once at the source. SLAM, both costmaps,
+`collision_monitor` and the controller all read `/scan_filtered`.
+
 **`detect_ports.py`** — USB enumeration order isn't stable, so devices are
 identified by behavior: the lidar streams bytes unprompted, the Nano stays silent
 until polled. Returns `(nano_port, lidar_port)`.
@@ -218,13 +229,14 @@ flowchart LR
     map -->|SLAM| odom -->|bridge| base_link -->|static TF| base_laser
 ```
 
-`base_link→base_laser` is a static publisher at z=0.18 m with **roll = π** — the
-lidar is mounted upside-down.
+`base_link→base_laser` is a static publisher at z=0.18 m with **roll = π** (the lidar is
+mounted upside-down) and **yaw = π** (its 0° points at the robot's back, found by driving
+forward and watching the 0° range grow).
 
 ### Config
 
 - `hardware.yaml` — physical constants (`baud_rate`, `track_width`,
-  `emergency_stop_distance`). **Generated** from `config.hpp`.
+  `emergency_stop_distance`, `scan_min_range`). **Generated** from `config.hpp`.
 - `tuning.yaml` — algorithm params: bridge slice sizes/thresholds, all of SLAM
   Toolbox and Nav2. Safe to tweak without touching hardware. Lines marked
   `# mirrors hardware.yaml` must be **hand-synced** — SLAM/Nav2 launch files accept
@@ -279,8 +291,8 @@ update any `# mirrors hardware.yaml` lines in `tuning.yaml` by hand.
 2. **Encoder hardware is fragile** — a printed replacement disk, channel B unusable,
    both motors running single-channel (~24 PPR).
 3. **Wheel slip** off the line at short distances — the ramp is too steep at start.
-4. **`TRACK_WIDTH_M` (0.15) is a placeholder** — affects rotation accuracy and the
-   ROS2 `robot_radius` / odometry.
+4. **`TRACK_WIDTH_M` (0.334) is still marked TODO** — verify with a 360° rotation test; it
+   sets rotation accuracy and `/odom` heading.
 5. `MAX_ANGULAR_ACCEL` and `SYNC_KP_PWM_PER_M` are hand-tuned seeds with no
    calibration path.
 6. Deceleration is jerky; effective PWM varies with load.

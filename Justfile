@@ -72,6 +72,13 @@ foxglove-bridge:
 pkill:
     docker exec ros2 bash -c "pkill -f ros"
 
+# attach every USB device listed by `orb usb list` that isn't already attached
+usb-attach:
+    #!/usr/bin/env zsh
+    orb usb list | awk '$NF != "attached" {print $1}' | while read -r id; do
+        orb usb attach "$id"
+    done
+
 # lists the device paths Docker actually sees, for wiring up compose.hardware.yaml
 usb-devices:
     docker run --rm -v /dev:/dev busybox sh -c 'ls -l /dev/ttyUSB* /dev/ttyACM* 2>/dev/null'

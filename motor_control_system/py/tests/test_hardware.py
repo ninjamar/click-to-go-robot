@@ -248,3 +248,43 @@ def test_queue_full_rejection(client):
 
     assert all(r.status == Status.OK for r in responses[:4])
     assert responses[4].status == Status.REJECTED_FULL
+
+
+def test_stop_clears_queued_commands(client):
+    """Test: OP_STOP drops queued commands too, so nothing starts after it."""
+    for seq_id in (110, 111):
+        resp = client.call(OP.QUEUE_MOVE, seq_id=seq_id, duration=2.0, direction=1)
+        assert resp.status == Status.OK
+
+    time.sleep(0.3)  # first command is running, second is queued
+
+    resp = client.call(OP.STOP, seq_id=112)
+    assert resp.status == Status.SUCCESS
+
+    time.sleep(0.3)
+    resp = client.call(OP.POLL_W, seq_id=113)
+    assert resp.status == Status.SUCCESS
+    assert not resp.is_active
+
+
+def _queued_run_seconds(client, commands):
+    """Queue `commands` back to back; return seconds until the last one completes."""
+    start = time.time()
+    for op, arg in commands:
+        client.send(op, arg, 1)
+    for _ in commands:
+        assert client.read_response().status == Status.OK
+    for _ in commands:
+        resp = client.read_response(timeout=MAX_COMMAND_S)
+        assert resp.status == Status.SUCCESS
+    return time.time() - start
+
+
+def test_blended_slices_match_one_long_move(client):
+    """Test: queued same-direction MOVE_DISTs blend without a stop between, so two
+    0.3 m moves take about as long as one 0.6 m move (a stop would add two ramps)."""
+    single = _queued_run_seconds(client, [(OP.QUEUE_MOVE_DIST, 0.6)])
+    blended = _queued_run_seconds(
+        client, [(OP.QUEUE_MOVE_DIST, 0.3), (OP.QUEUE_MOVE_DIST, 0.3)]
+    )
+    assert blended < single * 1.15

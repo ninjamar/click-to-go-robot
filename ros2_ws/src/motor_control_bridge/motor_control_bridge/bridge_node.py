@@ -1,4 +1,5 @@
 import math
+from collections import deque
 from dataclasses import dataclass
 from enum import Enum, auto
 from typing import NamedTuple
@@ -15,17 +16,14 @@ from motor_control_bridge.serial_transport import MotorSerial
 # Demand is tracked in slices; dispatch fires once one kind is this far behind,
 # and the backlog is capped so a slow robot doesn't build up unbounded motion.
 _MIN_DEMAND_SLICES = 0.5
+_CHAIN_MIN_DEMAND_SLICES = 0.0  # a slice continuing the current chain may go out early
 _MAX_DEMAND_SLICES = 2.0
 _MAX_DEMAND_DT = 0.5  # s; longest gap integrated into demand
-
+_MAX_PIPELINE = 2  # slices outstanding; the second lets the firmware blend into it
+_POLL_TIMEOUT = 1.0  # s; give up on a poll response that never arrives
 
 
 # ── types ──────────────────────────────────────────────────────────────────────
-
-
-class BridgeState(Enum):
-    IDLE = auto()
-    IN_FLIGHT = auto()  # a command has been sent; waiting for the firmware's response
 
 
 class IntentKind(Enum):
@@ -39,6 +37,15 @@ class Intent(NamedTuple):
 
     kind: IntentKind
     direction: int = 0  # firmware direction, -1 or 1; unused for STOP
+
+
+@dataclass
+class _Pending:
+    """A queued slice the firmware holds (active or waiting)."""
+
+    seq: int
+    intent: Intent
+    acked: bool = False  # intake ACK received
 
 
 @dataclass
@@ -87,12 +94,10 @@ class BridgeNode(Node):
         )
 
         # Bridge state — all fields are only touched on the ROS2 executor thread.
-        self._state = BridgeState.IDLE
-        self._inflight_seq: int | None = None
-        self._expect_intake = (
-            False  # True after sending a queued command, until intake ACK
-        )
-        self._inflight_is_poll = False  # the in-flight command is an OP_POLL_DIST
+        self._pending: deque[_Pending] = deque()  # slices the firmware holds, oldest first
+        self._poll_seq: int | None = None
+        self._poll_sent = self.get_clock().now()
+        self._stop_seq: int | None = None
         self._twist: Twist | None = None  # latest non-zero /cmd_vel; None = stopped
         self._twist_stamp = self.get_clock().now()
         self._demand_stamp = None  # last time demand was integrated
@@ -139,31 +144,40 @@ class BridgeNode(Node):
             self._handle_response(resp)
 
     def _handle_response(self, resp) -> None:
-        if resp.seq_id != self._inflight_seq:
-            return  # stale — seq_id was superseded by an intervening STOP
-
-        if resp.status == Status.REJECTED_FULL:
-            # Firmware queue was full; reset to idle so the next cmd_vel can retry.
-            self._state = BridgeState.IDLE
-            self._inflight_seq = None
-            return
-
-        if resp.status == Status.OK and self._expect_intake:
-            # Intake ACK: the firmware accepted the queued command. A second response
-            # (the completion) will follow when the command finishes executing.
-            self._expect_intake = False
-            return
-
-        if not self._inflight_is_poll:
-            # Completion and STOP ACK responses carry no odometry (all zeros), so read
-            # the cumulative displacement with a poll before dispatching the next slice.
+        seq = resp.seq_id
+        if seq == self._stop_seq:
+            # STOP ACK carries no odometry; poll for the aborted slice's displacement.
+            self._stop_seq = None
             self._send_poll()
             return
+        if seq == self._poll_seq:
+            self._poll_seq = None
+            self._integrate_displacement(resp.x2)
+            self._dispatch()
+            return
 
-        self._integrate_displacement(resp.x2)
+        cmd = next((c for c in self._pending if c.seq == seq), None)
+        if cmd is None:
+            return  # stale: superseded by a STOP
 
-        self._state = BridgeState.IDLE
-        self._inflight_seq = None
+        if resp.status == Status.REJECTED_FULL:
+            self.get_logger().warn("firmware queue full; slice rejected")
+            self._pending.remove(cmd)
+            return
+        if resp.status == Status.OK and not cmd.acked:
+            # Intake ACK; the completion follows when the slice finishes. Queue the
+            # next slice behind it so the firmware can blend the two.
+            cmd.acked = True
+            self._dispatch()
+            return
+
+        if resp.status == Status.TIMEOUT:
+            self.get_logger().warn("slice timed out (stalled, or hit the backstop)")
+
+        # Completion carries no odometry, so poll for the slice's displacement.
+        self._pending.remove(cmd)
+        if self._poll_seq is None:
+            self._send_poll()
         self._dispatch()
 
     # ── motion dispatch ─────────────────────────────────────────────────────────
@@ -173,19 +187,12 @@ class BridgeNode(Node):
         self._demand_move = 0.0
         self._demand_turn = 0.0
 
-    def _next_intent(self) -> Intent:
-        """Pick the next slice that best approximates the current velocity command.
-
-        The firmware can only move or rotate, so a Twist that mixes both is split
-        into alternating slices. Each call accrues the distance and angle the Twist
-        has asked for since the last call, then pays out whichever is further behind.
-        """
+    def _accrue_demand(self) -> None:
+        """Add the distance and angle the Twist has asked for since the last call."""
         now = self.get_clock().now()
-        timed_out = (now - self._twist_stamp).nanoseconds * 1e-9 > self._p_cmd_timeout
-        if self._twist is None or timed_out:
+        if self._twist is None:
             self._clear_demand()
-            return Intent(IntentKind.STOP)
-
+            return
         dt = 0.0
         if self._demand_stamp is not None:
             dt = min((now - self._demand_stamp).nanoseconds * 1e-9, _MAX_DEMAND_DT)
@@ -193,63 +200,90 @@ class BridgeNode(Node):
         self._demand_move += self._twist.linear.x * dt / self._p_slice_dist
         self._demand_turn += self._twist.angular.z * dt / self._p_slice_angle
 
-        # Credit is progress toward the commanded direction; it may go negative after
-        # a slice overshoots the demand, so total motion tracks the Twist.
-        sm = math.copysign(1.0, self._twist.linear.x) if self._twist.linear.x else 0.0
-        st = math.copysign(1.0, self._twist.angular.z) if self._twist.angular.z else 0.0
-        move, turn = self._demand_move * sm, self._demand_turn * st
-
         # Scale both down together so the move/turn ratio survives the cap.
         peak = max(abs(self._demand_move), abs(self._demand_turn))
         if peak > _MAX_DEMAND_SLICES:
             scale = _MAX_DEMAND_SLICES / peak
             self._demand_move *= scale
             self._demand_turn *= scale
-            move *= scale
-            turn *= scale
 
-        if max(move, turn) < _MIN_DEMAND_SLICES:
+    def _timed_out(self) -> bool:
+        age = (self.get_clock().now() - self._twist_stamp).nanoseconds * 1e-9
+        return age > self._p_cmd_timeout
+
+    def _next_intent(self, chain: Intent | None) -> Intent:
+        """Pick the next slice that best approximates the current velocity command.
+
+        The firmware can only move or rotate, so a Twist that mixes both is split
+        into alternating slices: whichever of distance and angle is further behind
+        is paid out. With a chain, only a slice that continues it is returned (a
+        different motion must wait until the chain drains), and nothing is paid. A
+        continuing slice goes out early so it is queued before the last one finishes.
+        """
+        if self._twist is None or self._timed_out():
+            self._clear_demand()
+            return Intent(IntentKind.STOP)
+        self._accrue_demand()
+
+        # Credit is progress toward the commanded direction; it may go negative after
+        # a slice overshoots the demand, so total motion tracks the Twist. Only the
+        # axes the Twist actually uses compete.
+        sm = math.copysign(1.0, self._twist.linear.x) if self._twist.linear.x else 0.0
+        st = math.copysign(1.0, self._twist.angular.z) if self._twist.angular.z else 0.0
+        candidates = []
+        if sm:
+            candidates.append((self._demand_move * sm, Intent(IntentKind.MOVE, int(sm))))
+        if st:
+            # Firmware ROTATE +1 turns the robot counter-clockwise (verified on the robot).
+            candidates.append((self._demand_turn * st, Intent(IntentKind.ROTATE, int(st))))
+        if not candidates:
+            return Intent(IntentKind.STOP)
+        credit, intent = max(candidates, key=lambda c: c[0])
+        threshold = _MIN_DEMAND_SLICES if chain is None else _CHAIN_MIN_DEMAND_SLICES
+        if credit < threshold:
+            return Intent(IntentKind.STOP)
+        if chain is not None and intent != chain:
             return Intent(IntentKind.STOP)
 
-        if move >= turn:
+        if intent.kind == IntentKind.MOVE:
             self._demand_move -= sm
-            return Intent(IntentKind.MOVE, int(sm))
-
-        # Firmware ROTATE +1 turns the robot counter-clockwise (verified on the robot).
-        self._demand_turn -= st
-        return Intent(IntentKind.ROTATE, int(st))
+        else:
+            self._demand_turn -= st
+        return intent
 
     def _dispatch(self) -> None:
-        """Issue the next firmware command for the current velocity command, if idle."""
-        if self._state != BridgeState.IDLE:
+        """Queue the next slice for the current velocity command, if there is room."""
+        if self._stop_seq is not None or len(self._pending) >= _MAX_PIPELINE:
             return
-        intent = self._next_intent()
+        chain = self._pending[-1].intent if self._pending else None
+        if chain is None and self._poll_seq is not None:
+            return  # settle odometry before starting a new chain
+        intent = self._next_intent(chain)
         match intent.kind:
             case IntentKind.MOVE:
                 seq = self._serial.send(
                     OP.QUEUE_MOVE_DIST, self._p_slice_dist, intent.direction
                 )
-                self._motion = intent
-                self._arm_inflight(seq, queued=True)
             case IntentKind.ROTATE:
                 seq = self._serial.send(
                     OP.QUEUE_ROTATE_ANGLE, self._p_slice_angle, intent.direction
                 )
-                self._motion = intent
-                self._arm_inflight(seq, queued=True)
             case IntentKind.STOP:
-                pass  # already stopped; nothing to send
-
-    def _arm_inflight(self, seq: int, queued: bool, poll: bool = False) -> None:
-        """Mark a command as in-flight and configure whether to expect an intake ACK."""
-        self._inflight_seq = seq
-        self._expect_intake = queued
-        self._inflight_is_poll = poll
-        self._state = BridgeState.IN_FLIGHT
+                return  # nothing to send
+        self._motion = intent
+        self._pending.append(_Pending(seq, intent))
 
     def _send_poll(self) -> None:
-        seq = self._serial.send(OP.POLL_DIST)
-        self._arm_inflight(seq, queued=False, poll=True)
+        self._poll_seq = self._serial.send(OP.POLL_DIST)
+        self._poll_sent = self.get_clock().now()
+
+    def _send_stop(self, reason: str) -> None:
+        """Interrupt now. STOP is not queued: it halts the active slice and drops the
+        queued ones, and the firmware sends no completion for them, only a STOP ACK."""
+        self.get_logger().info(f"stop: {reason}")
+        self._pending.clear()
+        self._poll_seq = None  # a poll in flight is stale; its delta rides the next one
+        self._stop_seq = self._serial.send(OP.STOP)
 
     def _on_cmd_vel(self, msg: Twist) -> None:
         """Subscription callback: called by the executor whenever Nav2 sends a velocity.
@@ -265,31 +299,35 @@ class BridgeNode(Node):
         if stopped:
             self._twist = None
             self._clear_demand()
-        else:
-            # Components inside their dead zone are dropped so noise doesn't rotate us.
-            twist = Twist()
-            twist.linear.x = msg.linear.x if abs(msg.linear.x) > self._p_lin_thresh else 0.0
-            twist.angular.z = msg.angular.z if abs(msg.angular.z) > self._p_ang_thresh else 0.0
-            self._twist = twist
-            self._twist_stamp = self.get_clock().now()
+            if self._pending and self._stop_seq is None:
+                self._send_stop("zero velocity")
+            return
 
-        if stopped and self._state == BridgeState.IN_FLIGHT:
-            # Interrupt the active command immediately. STOP is not queued on the
-            # firmware side — it executes instantly and does NOT send a completion
-            # for the aborted command, only a STOP acknowledgement.
-            seq = self._serial.send(OP.STOP)
-            self._arm_inflight(seq, queued=False)
-        elif self._state == BridgeState.IDLE:
-            self._dispatch()
+        # Components inside their dead zone are dropped so noise doesn't rotate us.
+        twist = Twist()
+        twist.linear.x = msg.linear.x if abs(msg.linear.x) > self._p_lin_thresh else 0.0
+        twist.angular.z = msg.angular.z if abs(msg.angular.z) > self._p_ang_thresh else 0.0
+        self._accrue_demand()  # demand up to now at the previous Twist
+        self._twist = twist
+        self._twist_stamp = self.get_clock().now()
+        self._dispatch()
 
     def _idle_poll(self) -> None:
-        """Timer callback: request fresh odometry when the bridge is idle.
+        """Timer callback: stop if /cmd_vel went quiet, else keep odometry flowing.
 
         Nav2 and SLAM Toolbox require a continuous /odom stream even when the robot
         is stationary. When no motion command is active, the firmware sends no
         spontaneous responses, so we poll explicitly to keep the topic alive.
         """
-        if self._state == BridgeState.IDLE:
+        if self._pending and self._stop_seq is None and (self._twist is None or self._timed_out()):
+            self._send_stop("no /cmd_vel")
+            return
+        if self._poll_seq is not None:
+            age = (self.get_clock().now() - self._poll_sent).nanoseconds * 1e-9
+            if age > _POLL_TIMEOUT:
+                self.get_logger().warn("poll response lost; recovering")
+                self._poll_seq = None
+        if not self._pending and self._poll_seq is None and self._stop_seq is None:
             self._send_poll()
 
     # ── odometry ────────────────────────────────────────────────────────────────

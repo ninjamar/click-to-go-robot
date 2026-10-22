@@ -59,7 +59,8 @@ def render(baud_rate: int, track_width: float) -> str:
 # baud_rate and track_width are extracted from config.hpp by generate_hardware_config.py.
 # Run `just generate-config` to regenerate after changing config.hpp.
 #
-# emergency_stop_distance and scan_min_range are not in config.hpp.
+# emergency_stop_distance, scan_min_range, scan_front_angle_deg and emergency_cone_deg
+# are not in config.hpp.
 # To change them, edit the render() function in generate_hardware_config.py and regenerate.
 #
 # serial_port is not set here — robot.launch.py detects it at launch time via
@@ -73,6 +74,8 @@ motor_control_bridge:
 robot_controller:
   ros__parameters:
     emergency_stop_distance: 0.30  # meters
+    scan_front_angle_deg: 180.0  # lidar angle that points at the robot's front
+    emergency_cone_deg: 40.0  # half-width of the cone checked in the direction of travel
 
 scan_filter:
   ros__parameters:

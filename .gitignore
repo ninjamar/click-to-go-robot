@@ -218,3 +218,5 @@ pyrightconfig.json
 
 # End of https://www.toptal.com/developers/gitignore/api/python,c++,platformio
 ignore/
+# ROS logs mounted from the container
+ros2_ws/logs/

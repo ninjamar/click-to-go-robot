@@ -23,10 +23,13 @@ CommandPacket activeCommand;
 unsigned long activeStartTime = 0;
 unsigned long lastTickTime = 0;
 
-// Per-command progress toward activeCommand.arg; accumulatedRad is reused
-// across ROTATE_ANGLE and DEBUG_RUN_N_ROTATIONS (never both active at once).
+// Progress of the current chain of same-op, same-direction distance commands.
+// Not reset between blended commands; accumulatedRad is reused across
+// ROTATE_ANGLE and DEBUG_RUN_N_ROTATIONS (never both active at once).
 float accumulatedM = 0.0f;
 float accumulatedRad = 0.0f;
+float chainBase = 0.0f; // summed arg of the chain's completed commands
+float omegaCmd = 0.0f; // slew-limited shaft speed target
 
 // Stall watchdog state - last progress value seen, and when.
 float lastProgressValue = 0.0f;
@@ -90,10 +93,28 @@ uint8_t pwmFromOmega(float omega) {
     return static_cast<uint8_t>(constrain(pwm, MIN_PWM, MAX_PWM));
 }
 
+// True if the next queued command continues the active one without a stop.
+bool queueContinuesChain() {
+    return queueCount > 0 && queue[queueHead].operation == activeCommand.operation
+        && queue[queueHead].direction == activeCommand.direction;
+}
+
+// Summed arg of the queued commands that continue the active chain.
+float queuedChainArg() {
+    float total = 0.0f;
+    for (uint8_t i = 0; i < queueCount; i++) {
+        const CommandPacket& c = queue[(queueHead + i) % QUEUE_SIZE];
+        if (c.operation != activeCommand.operation || c.direction != activeCommand.direction) {
+            break;
+        }
+        total += c.arg;
+    }
+    return total;
+}
+
 // All poll calls pass through here. Only accumulates distance if the direction
 // is known (via isActive)
-void pollAndAccumulate(float& w1, float& w2) {
-    float dtSec;
+void pollAndAccumulate(float& w1, float& w2, float& dtSec) {
     odometerDriver.poll(w1, w2, dtSec);
 
     float x1 = w1 * dtSec * WHEEL_RADIUS_M / GEAR_RATIO;
@@ -112,7 +133,8 @@ void pollAndAccumulate(float& w1, float& w2) {
 void sendVelocityResponse(const CommandPacket& pk, ResponseStatus status) {
     float w1;
     float w2;
-    pollAndAccumulate(w1, w2);
+    float dtSec;
+    pollAndAccumulate(w1, w2, dtSec);
     // Direction is only known while a command is actively driving; otherwise
     // report magnitude; see isActive
     float sign = isActive ? static_cast<float>(activeCommand.direction) : 1.0f;
@@ -153,6 +175,7 @@ void loop() {
             case OP_STOP:
                 motorDriver.stop();
                 isActive = false;
+                queueCount = 0; // STOP drops queued commands too
                 serialProtocol.sendStatus(packet, STATUS_SUCCESS);
                 break;
             case OP_POLL_W:
@@ -199,7 +222,8 @@ void loop() {
         // Call on every tick for distance
         float w1;
         float w2;
-        pollAndAccumulate(w1, w2);
+        float dtSec;
+        pollAndAccumulate(w1, w2, dtSec);
 
         bool done = false;
         ResponseStatus doneStatus = STATUS_SUCCESS;
@@ -211,7 +235,7 @@ void loop() {
             done = elapsedMs > MAX_COMMAND_MS;
             doneStatus = STATUS_TIMEOUT;
         } else if (kind == KIND_DISTANCE || kind == KIND_SHAFT_ROTATION) {
-            float dt = MS_TO_S(CONTROL_TICK_MS);
+            float dt = dtSec; // actual poll window; a mid-tick poll shortens it
 
             if (kind == KIND_SHAFT_ROTATION) {
                 // Raw shaft angle; independent of emperical constants
@@ -225,18 +249,21 @@ void loop() {
                 // Encoder A is unusable under motor drive; B is the only odometry source.
                 float dsB = w2 * dt / GEAR_RATIO * WHEEL_RADIUS_M;
 
+                // Targets are cumulative over the chain; the ramp-down plans for the
+                // whole chain, including queued commands that continue it.
+                float target = chainBase + activeCommand.arg;
                 if (activeCommand.operation == OP_QUEUE_MOVE_DIST) {
                     accumulatedM += fabsf(dsB);
 
-                    remaining = activeCommand.arg - accumulatedM;
+                    remaining = target + queuedChainArg() - accumulatedM;
                     shaftRadPerUnit = GEAR_RATIO / WHEEL_RADIUS_M;
-                    done = accumulatedM >= activeCommand.arg;
+                    done = accumulatedM >= target;
                 } else { // OP_QUEUE_ROTATE_ANGLE
                     // In-place spin: both wheels cover the same arc, so B alone gives the angle.
                     accumulatedRad += fabsf(dsB) * 2.0f / TRACK_WIDTH_M;
-                    remaining = activeCommand.arg - accumulatedRad;
+                    remaining = target + queuedChainArg() - accumulatedRad;
                     shaftRadPerUnit = (TRACK_WIDTH_M / 2.0f) * GEAR_RATIO / WHEEL_RADIUS_M;
-                    done = accumulatedRad >= activeCommand.arg;
+                    done = accumulatedRad >= target;
                 }
             }
 
@@ -264,9 +291,18 @@ void loop() {
         }
 
         if (done) {
-            motorDriver.stop();
             serialProtocol.sendStatus(activeCommand, doneStatus);
-            isActive = false;
+            if (doneStatus == STATUS_SUCCESS && kind == KIND_DISTANCE && queueContinuesChain()) {
+                // Blend: start the next command without stopping or ramping down.
+                chainBase += activeCommand.arg;
+                activeCommand = queue[queueHead];
+                queueHead = (queueHead + 1) % QUEUE_SIZE;
+                queueCount--;
+                activeStartTime = now;
+            } else {
+                motorDriver.stop();
+                isActive = false;
+            }
         } else if (kind == KIND_RAW_PWM) {
             auto pwm = static_cast<uint8_t>(constrain(activeCommand.arg, 0.0f, MAX_PWM));
             motorDriver.driveMove(activeCommand.direction, pwm);
@@ -276,7 +312,10 @@ void loop() {
                 pwm = pwmFromOmega(computeTargetOmegaByTime(MS_TO_S(elapsedMs), MS_TO_S(max(remaining, 0.0f))));
             } else {
                 float traveled = (activeCommand.operation == OP_QUEUE_MOVE_DIST) ? accumulatedM : accumulatedRad;
-                pwm = pwmFromOmega(computeTargetOmegaByDistance(traveled * shaftRadPerUnit, max(remaining, 0.0f) * shaftRadPerUnit));
+                float omega = computeTargetOmegaByDistance(traveled * shaftRadPerUnit, max(remaining, 0.0f) * shaftRadPerUnit);
+                // Never step up faster than the ramp, e.g. when more of the chain arrives late.
+                omegaCmd = min(omega, omegaCmd + MAX_ANGULAR_ACCEL * MS_TO_S(CONTROL_TICK_MS));
+                pwm = pwmFromOmega(omegaCmd);
             }
             if (activeCommand.operation == OP_QUEUE_MOVE
                 || activeCommand.operation == OP_QUEUE_MOVE_DIST
@@ -304,6 +343,8 @@ void loop() {
         lastTickTime = activeStartTime - CONTROL_TICK_MS; // fire the first tick immediately
         accumulatedM = 0.0f;
         accumulatedRad = 0.0f;
+        chainBase = 0.0f;
+        omegaCmd = 0.0f;
         lastProgressValue = 0.0f;
         lastProgressTime = activeStartTime;
         isActive = true;

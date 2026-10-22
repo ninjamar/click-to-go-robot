@@ -1,6 +1,8 @@
+import math
+
 import rclpy
 from action_msgs.msg import GoalStatus
-from geometry_msgs.msg import PoseStamped
+from geometry_msgs.msg import PoseStamped, Twist
 from nav2_msgs.action import NavigateToPose
 from rclpy.action import ActionClient
 from rclpy.node import Node
@@ -13,9 +15,16 @@ class ControllerNode(Node):
         super().__init__("robot_controller")
 
         self.declare_parameter("emergency_stop_distance", 0.3)
+        # Lidar angle (deg) that points at the robot's front, and the half-width of the
+        # cone checked in the direction of travel. Wheels sit at the sides, outside it.
+        self.declare_parameter("scan_front_angle_deg", 180.0)
+        self.declare_parameter("emergency_cone_deg", 40.0)
         self._p_stop_dist = self.get_parameter("emergency_stop_distance").value
+        self._p_front_angle = self.get_parameter("scan_front_angle_deg").value
+        self._p_cone = self.get_parameter("emergency_cone_deg").value
 
         self._navigating = False
+        self._linear_x = 0.0  # latest commanded forward speed
         self._goal_handle = None  # holds the active Nav2 goal so we can cancel it
 
         # An ActionClient sends goals to an action server and receives structured feedback.
@@ -28,6 +37,7 @@ class ControllerNode(Node):
         # /goal_pose is published by RViz2's "2D Nav Goal" button. Clicking on the map
         # sends one PoseStamped — a position + orientation tagged with a coordinate frame.
         self.create_subscription(PoseStamped, "/goal_pose", self._on_goal, 10)
+        self.create_subscription(Twist, "/cmd_vel", self._on_cmd_vel, 10)
 
         # /scan_filtered is the lidar output — an array of distance readings at evenly-spaced
         # angles around the robot. Used here only as a last-resort safety check;
@@ -90,18 +100,29 @@ class ControllerNode(Node):
         self._navigating = False
         self._goal_handle = None
 
+    def _on_cmd_vel(self, msg: Twist) -> None:
+        self._linear_x = msg.linear.x
+
     def _on_scan(self, msg: LaserScan) -> None:
         """Subscription callback: cancel navigation if an obstacle is critically close.
 
         Nav2's local costmap handles normal obstacle avoidance. This fires a hard cancel
         for cases where costmap updates haven't propagated in time — a last resort, not
-        the primary safety mechanism.
+        the primary safety mechanism. It only looks in the direction the robot is
+        driving, so a robot parked near something can still be sent away from it.
         """
-        if not self._navigating:
+        if not self._navigating or abs(self._linear_x) < 0.02:
             return
-        closest = min((r for r in msg.ranges if r > 0.0), default=float("inf"))
+        center = self._p_front_angle + (0.0 if self._linear_x > 0 else 180.0)
+        closest = float("inf")
+        for i, r in enumerate(msg.ranges):
+            if not (r > 0.0 and math.isfinite(r)):
+                continue
+            angle = math.degrees(msg.angle_min + i * msg.angle_increment)
+            if abs((angle - center + 180.0) % 360.0 - 180.0) <= self._p_cone:
+                closest = min(closest, r)
         if closest < self._p_stop_dist:
-            self.get_logger().warn(f"emergency stop: obstacle at {closest:.2f} m")
+            self.get_logger().warn(f"emergency stop: obstacle at {closest:.2f} m ahead")
             if self._goal_handle:
                 self._goal_handle.cancel_goal_async()
             self._navigating = False

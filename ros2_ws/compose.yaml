@@ -6,6 +6,7 @@ services:
       dockerfile: ros2_ws/Dockerfile
     volumes:
       - ./src:/workspace/ros2_ws/src
+      - ./logs:/root/.ros/log  # ROS logs survive container recreation
     ports:
       - "8765:8765"  # foxglove_bridge websocket
     stdin_open: true

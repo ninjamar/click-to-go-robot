@@ -74,7 +74,7 @@ depends on the op:
 | `OP_QUEUE_ROTATE` | duration (s) | yes | spin in place for a time |
 | `OP_QUEUE_MOVE_DIST` | distance (m) | yes | drive straight, stop by odometry |
 | `OP_QUEUE_ROTATE_ANGLE` | angle (rad) | yes | rotate chassis, stop by odometry |
-| `OP_STOP` | — | no | halts the active command; no completion is sent for the aborted command |
+| `OP_STOP` | — | no | halts the active command and drops all queued ones; no completion is sent for them |
 | `OP_POLL_W` / `OP_POLL_DIST` | — | no | request a full data response |
 | `OP_RESET_DIST` | — | no | zero the persistent odometry accumulators |
 | `OP_DEBUG_SET_PWM` | raw PWM 0–255 | yes | no ramp; runs until `OP_STOP` or the 120 s backstop |
@@ -98,7 +98,7 @@ depends on the op:
 A queued command yields **two** responses: the `OK` at intake, then a
 `SUCCESS`/`TIMEOUT` completion. Completion conditions:
 
-- Distance/angle ops: both wheels reach the target (each tracked independently).
+- Distance/angle ops: wheel B (encoder A is unusable) reaches the target.
 - `STALL_TIMEOUT_MS` (3 s): no odometry progress → abort.
 - `MAX_COMMAND_MS` (120 s): hard emergency-stop backstop for any op.
 
@@ -113,10 +113,20 @@ The firmware commands PWM but wants to control shaft angular velocity ω:
    Short moves collapse to a triangular profile automatically.
 2. **ω → PWM** — linear fit `pwm = MIN_PWM + PWM_PER_RAD_S·ω`, clamped
    (`pwmFromOmega`).
-3. **Wheel sync** — during `MOVE_DIST`, a proportional term (`SYNC_KP_PWM_PER_M`)
-   trims the lagging/leading wheel.
+3. **Slew limit** — the commanded ω never steps up faster than `MAX_ANGULAR_ACCEL`
+   (e.g. when more of a chain arrives late).
 
 This is **open-loop**: measured ω is reported but never feeds back into the PWM.
+Wheel sync lives on the `per-wheel-sync` branch (it needs both encoders).
+
+**Blending.** A *chain* is consecutive `MOVE_DIST` (or `ROTATE_ANGLE`) commands with
+the same operation and direction. Progress and the target are cumulative over the
+chain, and the ramp-down distance covers the active command plus queued ones that
+continue it. When a command completes and the next queued one continues the chain,
+the firmware starts it without stopping, so a stream of slices runs at one speed
+profile instead of ramping up and down per slice. A different operation or direction
+ends the chain with a normal stop. Progress is integrated over the real odometer poll
+window, so a mid-tick poll doesn't skew it.
 
 ### config.hpp
 
@@ -187,7 +197,7 @@ just mcs-send-command "move:1,poll_w" --port /dev/cu.usbserial-XXXX
 | `robot_controller` | `controller_node.py` (goal handling + safety backstop), `scan_filter_node.py` (own-body filter) |
 | `ldlidar_sl_ros2` | git **submodule**, the LD14P lidar driver, publishes `/scan` |
 
-**`bridge_node.py`** — an `IDLE` / `IN_FLIGHT` state machine.
+**`bridge_node.py`** — tracks the queued slices the firmware holds (at most two) plus one poll or STOP in flight.
 
 - Subscribes `/cmd_vel`. The firmware can only move *or* rotate, so a Twist is
   split into alternating **slices**: `slice_distance` (0.20 m) per `MOVE_DIST`,
@@ -195,7 +205,10 @@ just mcs-send-command "move:1,poll_w" --port /dev/cu.usbserial-XXXX
   angle the Twist has asked for, and each time it is free it dispatches whichever
   is further behind, so a mixed `(v, ω)` becomes interleaved slices in proportion.
   Components below `linear_threshold`/`angular_threshold` are dropped as noise.
-- A zero Twist interrupts immediately, and the bridge stops dispatching if no
+- It keeps up to two slices queued when the next one continues the chain (same
+  motion and direction), so the firmware can blend them. A different motion waits for
+  the chain to drain; a mixed move+turn Twist therefore stops at every switch.
+- A zero Twist interrupts immediately (`STOP` also drops the queued slice), and the bridge stops dispatching if no
   `/cmd_vel` arrives within `cmd_vel_timeout` (0.5 s).
 - ROTATE direction +1 is counter-clockwise (verified on the robot), matching the
   sign of `angular.z`.
@@ -209,7 +222,9 @@ just mcs-send-command "move:1,poll_w" --port /dev/cu.usbserial-XXXX
 **`controller_node.py`** — subscribes `/goal_pose` (RViz "2D Nav Goal"), drives
 Nav2's `NavigateToPose` action, and hard-cancels if `/scan` shows something closer
 than `emergency_stop_distance` (0.30 m). Normal avoidance is Nav2's job; this is a
-last resort.
+last resort. It only checks while the robot is commanded to move, in a ±40° cone in
+the direction of travel (the lidar's 180° is the robot's front, `scan_front_angle_deg`),
+so a robot parked near a wall can still be sent away from it and rotation never trips it.
 
 **`scan_filter_node.py`** — republishes `/scan` as `/scan_filtered` with returns closer
 than `scan_min_range` (0.27 m) set to NaN. Those are the robot's own wheels/mounts
@@ -236,7 +251,8 @@ forward and watching the 0° range grow).
 ### Config
 
 - `hardware.yaml` — physical constants (`baud_rate`, `track_width`,
-  `emergency_stop_distance`, `scan_min_range`). **Generated** from `config.hpp`.
+  `emergency_stop_distance`, `scan_min_range`, `scan_front_angle_deg`,
+  `emergency_cone_deg`). **Generated** from `config.hpp`.
 - `tuning.yaml` — algorithm params: bridge slice sizes/thresholds, all of SLAM
   Toolbox and Nav2. Safe to tweak without touching hardware. Lines marked
   `# mirrors hardware.yaml` must be **hand-synced** — SLAM/Nav2 launch files accept
@@ -246,12 +262,19 @@ forward and watching the 0° range grow).
 
 ```bash
 just docker-up            # or docker-up-hardware  (after `orb usb attach`)
-just colcon-build         # after editing src/
+just colcon-build         # after editing src/ (cleans our Python packages first)
 just launch               # lidar + SLAM + Nav2 + bridge + controller
 just foxglove-bridge      # connect Foxglove Studio to ws://localhost:8765
 just docker-shell
 just pkill                # kill all ros processes in the container
 ```
+
+**Logs.** ROS logs (one file per node, plus a directory per launch with `launch.log`
+and each process's stdout) are written to `ros2_ws/logs/` on the host, mounted from
+the container's `/root/.ros/log`, so they survive recreating the container. The
+bridge logs stops, queue-full rejections, stalled slices and lost polls. Don't
+capture output with `timeout just launch`: it kills the `docker exec` client but
+leaves the `ros2 launch` running in the container.
 
 ---
 

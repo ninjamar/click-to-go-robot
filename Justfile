@@ -57,9 +57,11 @@ docker-up-hardware:
 docker-shell:
     docker exec -it ros2 bash
 
-# rebuild colcon packages inside the running container after source changes
+# rebuild colcon packages inside the running container after source changes. Our Python
+# packages are cleaned first: after the container is recreated, an incremental build can
+# leave the image's stale install in place.
 colcon-build:
-    docker exec ros2 bash -c "source /opt/ros/jazzy/setup.bash && cd /workspace/ros2_ws && colcon build"
+    docker exec ros2 bash -c "cd /workspace/ros2_ws && rm -rf build/robot_bringup build/motor_control_bridge build/robot_controller install/robot_bringup install/motor_control_bridge install/robot_controller && source /opt/ros/jazzy/setup.bash && colcon build"
 
 # launch the full navigation stack (lidar + SLAM + Nav2 + bridge + controller)
 launch:

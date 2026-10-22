@@ -32,7 +32,7 @@ def _launch_setup(context, *args, **kwargs):
         package="ldlidar_sl_ros2",
         executable="ldlidar_sl_ros2_node",
         name="ldlidar_publisher_ld14",
-        output="screen",
+        output="both",
         parameters=[
             {"product_name": "LDLiDAR_LD14P"},
             {"laser_scan_topic_name": "scan"},
@@ -96,7 +96,7 @@ def _launch_setup(context, *args, **kwargs):
         package="motor_control_bridge",
         executable="bridge_node",
         parameters=[tuning_params, hardware_params, {"serial_port": nano_port}],
-        output="screen",
+        output="both",
     )
 
     # Scan filter: /scan -> /scan_filtered with the robot's own body removed; SLAM,
@@ -105,7 +105,7 @@ def _launch_setup(context, *args, **kwargs):
         package="robot_controller",
         executable="scan_filter_node",
         parameters=[hardware_params],
-        output="screen",
+        output="both",
     )
 
     # Controller: accepts /goal_pose from RViz2 and drives Nav2's NavigateToPose action.
@@ -113,7 +113,7 @@ def _launch_setup(context, *args, **kwargs):
         package="robot_controller",
         executable="controller_node",
         parameters=[tuning_params, hardware_params],
-        output="screen",
+        output="both",
     )
 
     return [lidar_node, lidar_tf, scan_filter, slam, nav2, bridge, controller]

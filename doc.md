@@ -21,8 +21,8 @@ Three subsystems, all driven through the root **`Justfile`** (`just <target>`):
 flowchart LR
     lidar[Lidar] -->|/scan| slam[SLAM Toolbox]
     slam -->|/map, TF map→odom| nav2[Nav2]
-    rviz[RViz /goal_pose] --> controller[controller_node]
-    controller -->|NavigateToPose| nav2
+    foxglove[Foxglove /goal_pose] --> nav2
+    controller[controller_node] -.->|cancel on obstacle| nav2
     nav2 -->|/cmd_vel| bridge[bridge_node]
     bridge -->|serial| nano[Nano firmware]
     nano --> motors[2 motors]
@@ -219,10 +219,12 @@ just mcs-send-command "move:1,poll_w" --port /dev/cu.usbserial-XXXX
   angle `2·Δx2 / track_width` for a ROTATE slice. Republishes `/odom` and the
   **odom→base_link** TF at 20 Hz. SLAM Toolbox supplies the **map→odom** correction.
 
-**`controller_node.py`** — subscribes `/goal_pose` (RViz "2D Nav Goal"), drives
-Nav2's `NavigateToPose` action, and hard-cancels if `/scan` shows something closer
-than `emergency_stop_distance` (0.30 m). Normal avoidance is Nav2's job; this is a
-last resort. It only checks while the robot is commanded to move, in a ±40° cone in
+**`controller_node.py`** — a safety monitor, not a goal sender. `/goal_pose` (Foxglove
+"2D pose" or RViz "2D Nav Goal") is subscribed to by `bt_navigator` itself, so one click
+is one goal; this node watches the `NavigateToPose` action status (so it covers a goal
+from any source), logs goal state changes, and hard-cancels all goals if `/scan_filtered`
+shows something closer than `emergency_stop_distance` (0.30 m). Normal avoidance is
+Nav2's job; this is a last resort. It only checks while the robot is commanded to move, in a ±40° cone in
 the direction of travel (the lidar's 180° is the robot's front, `scan_front_angle_deg`),
 so a robot parked near a wall can still be sent away from it and rotation never trips it.
 

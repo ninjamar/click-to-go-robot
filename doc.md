@@ -181,10 +181,12 @@ just mcs-send-command "move:1,poll_w" --port /dev/cu.usbserial-XXXX
   `foxglove-bridge`, `uv`. Installs `motor-protocol`, resolves `src/` deps with
   `rosdep`, runs `colcon build`. Also `sed`-patches an upstream `ldlidar_sl_ros2`
   bug (missing `#include <pthread.h>`) at build time rather than editing the submodule.
-- `compose.yaml` — base service, no hardware needed. Exposes port 8765 (Foxglove).
-- `compose.hardware.yaml` — overlay mapping `/dev/ttyUSB*` into the container. Layer
-  it on only when the lidar + Nano are plugged in. On OrbStack, `orb usb attach`
-  first; `just usb-devices` shows the paths Docker sees.
+- `compose.yaml` — base service, no hardware needed. Exposes port 8765 (Foxglove), mounts
+  ROS logs to `ros2_ws/logs/`, and allows opening any `ttyUSB*` (`device_cgroup_rules`
+  `c 188:*`), so a USB device that reconnects under a new number is still usable.
+- On OrbStack the lidar and Nano reach the VM with `just usb-attach`; `just usb-devices`
+  shows what the VM actually sees (an empty result means a physical replug is needed).
+  No device mapping is needed in compose: the container creates the `/dev` nodes itself.
 - `src/` is bind-mounted, so `just colcon-build` picks up edits without rebuilding
   the image.
 
@@ -192,7 +194,7 @@ just mcs-send-command "move:1,poll_w" --port /dev/cu.usbserial-XXXX
 
 | Package | Contents |
 |---|---|
-| `robot_bringup` | `launch/robot.launch.py` (whole stack), `config/hardware.yaml` + `config/tuning.yaml`, `detect_ports.py` |
+| `robot_bringup` | `launch/robot.launch.py` (whole stack), `config/hardware.yaml` + `config/tuning.yaml` + `config/lidar.yaml`, `detect_ports.py`, `lidar_supervisor.py` |
 | `motor_control_bridge` | `bridge_node.py` (ROS2 ↔ serial), `serial_transport.py` (`MotorSerial` — background reader thread, packet framing) |
 | `robot_controller` | `controller_node.py` (goal handling + safety backstop), `scan_filter_node.py` (own-body filter) |
 | `ldlidar_sl_ros2` | git **submodule**, the LD14P lidar driver, publishes `/scan` |
@@ -208,6 +210,9 @@ just mcs-send-command "move:1,poll_w" --port /dev/cu.usbserial-XXXX
 - It keeps up to two slices queued when the next one continues the chain (same
   motion and direction), so the firmware can blend them. A different motion waits for
   the chain to drain; a mixed move+turn Twist therefore stops at every switch.
+- If the USB link to the Nano drops, `MotorSerial` reopens it (finding the Nano again by
+  driver) and bumps `generation`; the bridge then clears its queued slices and re-baselines
+  odometry, since the Arduino resets with each reconnect. The pose is held meanwhile.
 - A zero Twist interrupts immediately (`STOP` also drops the queued slice), and the bridge stops dispatching if no
   `/cmd_vel` arrives within `cmd_vel_timeout` (0.5 s).
 - ROTATE direction +1 is counter-clockwise (verified on the robot), matching the
@@ -235,9 +240,19 @@ robot starts inside an inscribed zone, and Nav2 can't plan. SLAM Toolbox has no
 minimum range, so this is done once at the source. SLAM, both costmaps,
 `collision_monitor` and the controller all read `/scan_filtered`.
 
-**`detect_ports.py`** — USB enumeration order isn't stable, so devices are
-identified by behavior: the lidar streams bytes unprompted, the Nano stays silent
-until polled. Returns `(nano_port, lidar_port)`.
+**`detect_ports.py`** — USB enumeration order isn't stable, so each port is identified by
+the kernel driver bound to it, read from sysfs (`cp210x` = lidar, `ch341-uart` = Nano). That
+never touches the ports. If sysfs is ambiguous it falls back to probing behavior (the lidar
+streams bytes unprompted, the Nano stays silent). It also creates a missing `/dev` node
+from sysfs, which a reconnected device needs inside the container. Returns
+`(nano_port, lidar_port)`.
+
+**`lidar_supervisor.py`** — runs the lidar driver (parameters in `config/lidar.yaml`) and
+restarts it on a freshly found port whenever it exits. The driver quits when the lidar's
+USB connection drops (`publish time out`), and the device comes back under a new `ttyUSB`
+number, so a plain launch respawn would reopen a dead path. If OrbStack's USB forwarding is
+itself stuck (the VM's `/sys/bus/usb/devices` shows only root hubs), a physical replug is
+still needed; the supervisor keeps retrying until the device appears.
 
 ### Frames
 
@@ -263,20 +278,22 @@ forward and watching the 0° range grow).
 ### Run
 
 ```bash
-just docker-up            # or docker-up-hardware  (after `orb usb attach`)
+just docker-up            # then `just usb-attach` for the lidar + Nano
 just colcon-build         # after editing src/ (cleans our Python packages first)
 just launch               # lidar + SLAM + Nav2 + bridge + controller
 just foxglove-bridge      # connect Foxglove Studio to ws://localhost:8765
 just docker-shell
-just pkill                # kill all ros processes in the container
+just pkill                # SIGINT the launches, wait up to 5 s, then SIGKILL stragglers
 ```
 
 **Logs.** ROS logs (one file per node, plus a directory per launch with `launch.log`
 and each process's stdout) are written to `ros2_ws/logs/` on the host, mounted from
 the container's `/root/.ros/log`, so they survive recreating the container. The
 bridge logs stops, queue-full rejections, stalled slices and lost polls. Don't
-capture output with `timeout just launch`: it kills the `docker exec` client but
-leaves the `ros2 launch` running in the container.
+capture output with `timeout just launch`. Ctrl-C on `just launch` stops the stack (the
+recipe forwards the interrupt into the container), but killing the `just` process any
+other way can leave the `ros2 launch` running there; `just launch` refuses to start a
+second copy, and `just pkill` clears it.
 
 ---
 

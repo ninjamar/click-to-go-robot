@@ -21,5 +21,9 @@ setup(
     description="Launch files and configuration for the full robot stack",
     license="TODO: License declaration",
     extras_require={"test": ["pytest"]},
-    entry_points={"console_scripts": []},
+    entry_points={
+        "console_scripts": [
+            "lidar_supervisor = robot_bringup.lidar_supervisor:main"
+        ]
+    },
 )

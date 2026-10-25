@@ -50,10 +50,6 @@ docker-up:
 docker-rebuild:
     docker compose -f ros2_ws/compose.yaml up --build -d
 
-# use when hardware is actually plugged in and attached via `orb usb attach`
-docker-up-hardware:
-    docker compose -f ros2_ws/compose.yaml -f ros2_ws/compose.hardware.yaml up -d
-
 docker-shell:
     docker exec -it ros2 bash
 
@@ -63,16 +59,38 @@ docker-shell:
 colcon-build:
     docker exec ros2 bash -c "cd /workspace/ros2_ws && rm -rf build/robot_bringup build/motor_control_bridge build/robot_controller install/robot_bringup install/motor_control_bridge install/robot_controller && source /opt/ros/jazzy/setup.bash && colcon build"
 
-# launch the full navigation stack (lidar + SLAM + Nav2 + bridge + controller)
+# launch the full navigation stack (lidar + SLAM + Nav2 + bridge + controller); refuses to
+# start a second copy, which would fight over the serial ports and node names. Ctrl-C only
+# stops the docker exec client, so the trap sends the interrupt into the container too.
 launch:
+    #!/usr/bin/env bash
+    if docker exec ros2 pgrep -f 'robot_bringup robot.launch.py' >/dev/null; then
+        echo "a launch is already running in the container; run 'just pkill' first" >&2
+        exit 1
+    fi
+    trap "docker exec ros2 pkill -INT -f 'robot_bringup robot.launch.py'" INT TERM
     docker exec ros2 bash -c "source /workspace/ros2_ws/install/setup.bash && ros2 launch robot_bringup robot.launch.py"
 
 # launch foxglove_bridge so Foxglove Studio can connect at ws://localhost:8765
 foxglove-bridge:
+    #!/usr/bin/env bash
+    trap "docker exec ros2 pkill -INT -f 'foxglove_bridge_launch.xml'" INT TERM
     docker exec ros2 bash -c "source /workspace/ros2_ws/install/setup.bash && ros2 launch foxglove_bridge foxglove_bridge_launch.xml"
 
+# stop everything ROS in the container: SIGINT to the launches (a clean shutdown),
+# wait up to 5 s, then SIGKILL stragglers. The script comes in on stdin so that the
+# patterns can't match this command's own command line.
 pkill:
-    docker exec ros2 bash -c "pkill -f ros"
+    #!/usr/bin/env bash
+    docker exec -i ros2 bash -s <<'EOF'
+    pkill -INT -f 'ros2 launch'
+    for _ in $(seq 10); do
+        pgrep -f 'ros2_ws|/opt/ros/jazzy' >/dev/null || exit 0
+        sleep 0.5
+    done
+    pkill -9 -f 'ros2_ws|/opt/ros/jazzy'
+    exit 0
+    EOF
 
 # attach every USB device listed by `orb usb list` that isn't already attached
 usb-attach:
@@ -80,7 +98,14 @@ usb-attach:
     orb usb list | awk '$NF != "attached" {print $1}' | while read -r id; do
         orb usb attach "$id"
     done
+    
+# detach every USB device listed by `orb usb list` that isn't already attached
+usb-detach:
+    #!/usr/bin/env zsh
+    orb usb list | awk '$NF == "attached" {print $1}' | while read -r id; do
+        orb usb detach "$id"
+    done
 
-# lists the device paths Docker actually sees, for wiring up compose.hardware.yaml
+# USB serial devices the VM sees, with kernel driver (cp210x = lidar, ch341-uart = Nano); empty = none reached the VM
 usb-devices:
-    docker run --rm -v /dev:/dev busybox sh -c 'ls -l /dev/ttyUSB* /dev/ttyACM* 2>/dev/null'
+    docker run --rm -v /sys:/sys:ro busybox sh -c 'for t in /sys/class/tty/ttyUSB*; do [ -e "$t" ] && echo "$(basename $t) $(cat $t/dev) $(basename $(readlink -f $t/device/driver))"; done; true'

@@ -7,6 +7,10 @@ services:
     volumes:
       - ./src:/workspace/ros2_ws/src
       - ./logs:/root/.ros/log  # ROS logs survive container recreation
+    # Lets the container open any ttyUSB* (major 188), including a device that comes
+    # back under a new number after a USB reconnect.
+    device_cgroup_rules:
+      - "c 188:* rmw"
     ports:
       - "8765:8765"  # foxglove_bridge websocket
     stdin_open: true

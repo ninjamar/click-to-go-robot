@@ -1,7 +1,0 @@
-services:
-  ros2:
-    devices:
-      # attach via `orb usb attach` first, then run `just usb-devices` to
-      # find the path — only layer this file on when hardware is plugged in.
-      - /dev/ttyUSB0  # Arduino Nano
-      - /dev/ttyUSB1  # lidar (LD14P)

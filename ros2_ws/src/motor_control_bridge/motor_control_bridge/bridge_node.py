@@ -12,6 +12,7 @@ from protocol import OP, Status
 from rclpy.node import Node
 
 from motor_control_bridge.serial_transport import MotorSerial
+from motor_control_bridge.usb_ports import NANO_DRIVER, find_port
 
 # Demand is tracked in slices; dispatch fires once one kind is this far behind,
 # and the backlog is capped so a slow robot doesn't build up unbounded motion.
@@ -71,6 +72,7 @@ class BridgeNode(Node):
         # (--ros-args -p name:=value) or a YAML file at launch.
         # declare_parameter registers a parameter with a default value.
         self.declare_parameter("serial_port", "/dev/ttyUSB0")
+        self.declare_parameter("serial_driver", NANO_DRIVER)  # finds the Nano again after a USB drop
         self.declare_parameter("baud_rate", 57600)
         self.declare_parameter("slice_distance", 0.05)
         self.declare_parameter("slice_angle", 0.1)
@@ -88,10 +90,14 @@ class BridgeNode(Node):
         self._p_track = self.get_parameter("track_width").value
         self._p_cmd_timeout = self.get_parameter("cmd_vel_timeout").value
 
+        driver = self.get_parameter("serial_driver").value
         self._serial = MotorSerial(
             self.get_parameter("serial_port").value,
             self.get_parameter("baud_rate").value,
+            find_port=lambda: find_port(driver),
         )
+        self._generation = self._serial.generation
+        self._link_up = True
 
         # Bridge state — all fields are only touched on the ROS2 executor thread.
         self._pending: deque[_Pending] = deque()  # slices the firmware holds, oldest first
@@ -138,8 +144,33 @@ class BridgeNode(Node):
 
     # ── serial responses ────────────────────────────────────────────────────────
 
+    def _check_link(self) -> None:
+        """Reset slice state when the firmware link drops or comes back.
+
+        A reconnect resets the Arduino, so its queue is empty and its cumulative
+        displacement is back at zero: forget everything outstanding and re-baseline x2.
+        """
+        if not self._serial.connected:
+            if self._link_up:
+                self.get_logger().error("firmware serial link lost; waiting for it to return")
+                self._link_up = False
+                self._reset_link_state()
+            return
+        if not self._link_up or self._serial.generation != self._generation:
+            self.get_logger().warn("firmware serial link restored; the firmware restarted")
+            self._link_up = True
+            self._generation = self._serial.generation
+            self._reset_link_state()
+
+    def _reset_link_state(self) -> None:
+        self._pending.clear()
+        self._poll_seq = None
+        self._stop_seq = None
+        self._last_x2 = None
+
     def _drain_responses(self) -> None:
         """Timer callback: process all serial responses that arrived since last tick."""
+        self._check_link()
         for resp in self._serial.drain():
             self._handle_response(resp)
 
@@ -270,11 +301,13 @@ class BridgeNode(Node):
                 )
             case IntentKind.STOP:
                 return  # nothing to send
+        if seq is None:
+            return  # link down
         self._motion = intent
         self._pending.append(_Pending(seq, intent))
 
     def _send_poll(self) -> None:
-        self._poll_seq = self._serial.send(OP.POLL_DIST)
+        self._poll_seq = self._serial.send(OP.POLL_DIST)  # None if the link is down
         self._poll_sent = self.get_clock().now()
 
     def _send_stop(self, reason: str) -> None:

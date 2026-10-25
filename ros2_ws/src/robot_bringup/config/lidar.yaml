@@ -1,0 +1,16 @@
+# LD14P lidar driver (ldlidar_sl_ros2). port_name is set by lidar_supervisor, since the
+# device's ttyUSB number changes when its USB connection drops and comes back.
+
+ldlidar_publisher_ld14:
+  ros__parameters:
+    product_name: LDLiDAR_LD14P
+    laser_scan_topic_name: scan
+    point_cloud_2d_topic_name: pointcloud2d
+    frame_id: base_laser
+    serial_baudrate: 230400
+    # Lidar is mounted upside-down (180° roll), which reverses the physical CW/CCW
+    # handedness of the raw scan relative to the sensor's own frame.
+    laser_scan_dir: true
+    enable_angle_crop_func: false
+    angle_crop_min: 135.0
+    angle_crop_max: 225.0

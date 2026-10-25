@@ -1,14 +1,16 @@
 """Identify which /dev/ttyUSB* device is the lidar vs. the motor-control Nano.
 
 USB enumeration order isn't guaranteed across replugs, so ttyUSB0/ttyUSB1 can point
-at either device depending on boot-time enumeration order. The lidar streams scan
-data continuously and unprompted; the Nano firmware stays silent until polled. That
-behavioral difference is used to identify each port instead of trusting a fixed path.
+at either device, and a device that drops and reconnects comes back under a new number.
+The two use different USB-serial chips, so the kernel driver bound to each tty (read
+from sysfs) says which is which, without touching the ports. If that is ambiguous, fall
+back to behavior: the lidar streams scan data unprompted; the Nano stays silent.
 """
 
 import glob
 
 import serial
+from motor_control_bridge.usb_ports import LIDAR_DRIVER, NANO_DRIVER, find_port
 
 LIDAR_BAUD = 230400
 PROBE_SECONDS = 1.0
@@ -26,6 +28,10 @@ def detect_serial_ports(candidates: list[str] | None = None) -> tuple[str, str]:
     Raises RuntimeError if detection isn't unambiguous.
     """
     if candidates is None:
+        try:
+            return find_port(NANO_DRIVER), find_port(LIDAR_DRIVER)
+        except RuntimeError:
+            pass  # sysfs unavailable or ambiguous; probe the ports instead
         candidates = sorted(glob.glob("/dev/ttyUSB*"))
 
     if len(candidates) != 2:
